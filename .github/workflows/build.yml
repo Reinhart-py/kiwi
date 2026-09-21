@@ -1,0 +1,35 @@
+name: Build Kiwi Desktop App
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Project Dependencies
+        run: npm install
+
+      - name: Package Windows Executable
+        run: npm run dist
+
+      - name: Upload Installer and Portable Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kiwi-Windows-Release
+          path: release/*.exe
