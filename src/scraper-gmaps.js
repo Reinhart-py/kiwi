@@ -159,7 +159,7 @@ async function runGmaps(config, control, log) {
   });
 
   log(`Target queue: ${queries.length} queries`);
-  log(`Output: ${csvPath}`);
+  log(`Saving leads to: ${csvPath}`);
 
   const browser = await getBrowser();
   const context = await browser.newContext({ locale: 'en-US' });
@@ -170,12 +170,12 @@ async function runGmaps(config, control, log) {
   try {
     for (let i = startIdx; i < queries.length; i++) {
       if (control.cancelled) {
-        log('Execution paused.');
+        log('Stopped by user.');
         break;
       }
 
       if (cap > 0 && totalSaved >= cap) {
-        log(`Harvest threshold of ${cap} records satisfied.`);
+        log(`Goal of ${cap} leads reached.`);
         break;
       }
 
@@ -189,7 +189,7 @@ async function runGmaps(config, control, log) {
       try {
         await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 35000 });
       } catch (navErr) {
-        log(`Navigation timeout for: ${q}. Skipping.`);
+        log(`Search timed out for: ${q}. Skipping.`);
         updateProgress('gmaps', target, i + 1, totalSaved);
         continue;
       }
@@ -199,12 +199,12 @@ async function runGmaps(config, control, log) {
         if (acceptBtn) await acceptBtn.click();
       } catch {}
 
-      await page.waitForTimeout(1500);
+      await page.waitForTimeout(1800);
 
       const isDirectPlace = page.url().includes('/maps/place/');
 
       if (isDirectPlace) {
-        log('Entity resolved directly into place view.');
+        log('Single business resolved directly.');
         const details = await extractActivePane(page);
         if (details.title && details.title !== 'Unknown') {
           await csvWriter.writeRecords([{ query: q, ...details }]);
@@ -219,7 +219,7 @@ async function runGmaps(config, control, log) {
       let scrollCycles = 0;
       let stagnantCount = 0;
 
-      while (scrollCycles < 25) {
+      while (scrollCycles < 30) {
         if (control.cancelled) break;
         if (cap > 0 && totalSaved >= cap) break;
 
@@ -234,7 +234,7 @@ async function runGmaps(config, control, log) {
         }
 
         if (visibleHrefs.length === 0) {
-          const isDeadEnd = await page.$('span:has-text("No more results"), div:has-text("Partial match"), div:has-text("No results found")');
+          const isDeadEnd = await page.$('span:has-text("No more results"), div:has-text("Partial match"), div:has-text("No results found"), div:has-text("reached the end")');
           if (isDeadEnd) break;
         }
 
@@ -246,46 +246,37 @@ async function runGmaps(config, control, log) {
           if (seenUrls.has(href)) continue;
           seenUrls.add(href);
 
+          let detailPage = null;
           try {
-            const cardLocator = page.locator(`a[href="${href}"]`).first();
-            await cardLocator.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
-            await cardLocator.click({ timeout: 3000 }).catch(() => {});
+            detailPage = await context.newPage();
+            await detailPage.goto(href, { waitUntil: 'domcontentloaded', timeout: 15000 });
+            await detailPage.waitForSelector('h1.DUwDvf, button[data-item-id="address"]', { timeout: 6000 }).catch(() => {});
 
-            await page.waitForSelector('h1.DUwDvf, button[data-item-id="address"]', { timeout: 6000 }).catch(() => {});
-
-            const details = await extractActivePane(page);
+            const details = await extractActivePane(detailPage);
             if (details.title && details.title !== 'Unknown') {
               await csvWriter.writeRecords([{ query: q, ...details }]);
               totalSaved++;
               newRecordsThisCycle++;
-              log(`Saved #${totalSaved}: ${details.title.substring(0, 22)} | ${details.phone_1}`);
+              log(`Saved #${totalSaved}: ${details.title.substring(0, 26)} | ${details.phone_1}`);
             }
-
-            const backBtn = await page.$('button[aria-label="Back"], button[jsaction*="pane.back"], button[aria-label="Close"]');
-            if (backBtn) {
-              await backBtn.click().catch(() => {});
-            } else {
-              await page.goBack().catch(() => {});
-            }
-
-            await page.waitForSelector('div[role="feed"]', { timeout: 5000 }).catch(() => {});
-            await page.waitForTimeout(400);
           } catch (cardError) {
-            try {
-              await page.goBack().catch(() => {});
-              await page.waitForTimeout(500);
-            } catch {}
+          } finally {
+            if (detailPage) {
+              try {
+                await detailPage.close();
+              } catch {}
+            }
           }
         }
 
         let hasReachedEnd = false;
         try {
-          const endMarker = await page.$('span:has-text("reached the end of the list"), div.HlvSq, div:has-text("Partial match")');
+          const endMarker = await page.$('span:has-text("reached the end of the list"), div.HlvSq, div:has-text("Partial match"), div:has-text("No more results")');
           if (endMarker) hasReachedEnd = true;
         } catch {}
 
         if (hasReachedEnd) {
-          log('Directory feed exhausted.');
+          log('Finished reading all results for this search.');
           break;
         }
 
@@ -302,11 +293,11 @@ async function runGmaps(config, control, log) {
         try {
           const feedElement = await page.$('div[role="feed"]');
           if (feedElement) {
-            await feedElement.evaluate((el) => el.scrollBy(0, 900));
+            await feedElement.evaluate((el) => el.scrollBy(0, 1000));
           } else {
-            await page.evaluate(() => window.scrollBy(0, 900));
+            await page.evaluate(() => window.scrollBy(0, 1000));
           }
-          await page.waitForTimeout(1200);
+          await page.waitForTimeout(1400);
         } catch {
           break;
         }
@@ -320,7 +311,7 @@ async function runGmaps(config, control, log) {
     try {
       await browser.close();
     } catch {}
-    log('Google Maps process finished.');
+    log('Done.');
   }
 }
 
