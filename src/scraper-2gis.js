@@ -72,7 +72,7 @@ async function runTwoGis(config, control, log) {
   const page = await context.newPage();
 
   let totalSaved = initialSaved;
-  let currentPage = startPage;
+  let currentPage = Number(startPage) || 1;
 
   try {
     const url = buildSearchUrl(city, query);
@@ -196,8 +196,10 @@ async function runTwoGis(config, control, log) {
       }
     }
   } finally {
-    await browser.close();
-    log('2GIS task finished.');
+    try {
+      await browser.close();
+    } catch {}
+    log('Done.');
   }
 }
 
