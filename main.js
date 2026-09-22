@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const { verifyKey, getSavedKey, saveKey, removeKey } = require('./src/license');
-const { getHistory, getActiveCheckpoint, clearActiveCheckpoint, getExportPath } = require('./src/storage');
+const { getHistory, getActiveCheckpoint, clearActiveCheckpoint } = require('./src/storage');
 const { runGmaps } = require('./src/scraper-gmaps');
 const { runTwoGis } = require('./src/scraper-2gis');
 
@@ -10,11 +10,11 @@ let activeTask = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 820,
-    minWidth: 980,
-    minHeight: 640,
-    backgroundColor: '#0B2416',
+    width: 1400,
+    height: 900,
+    minWidth: 1040,
+    minHeight: 700,
+    backgroundColor: '#061c12',
     autoHideMenuBar: true,
     icon: path.join(__dirname, 'images', 'icon.ico'),
     webPreferences: {
@@ -75,7 +75,7 @@ ipcMain.handle('dialog:open-file', async () => {
   const res = await dialog.showOpenDialog(mainWindow, {
     properties: ['openFile'],
     filters: [
-      { name: 'Spreadsheets and Text', extensions: ['csv', 'xlsx', 'xls', 'txt'] },
+      { name: 'Spreadsheets & Text', extensions: ['csv', 'xlsx', 'xls', 'txt'] },
       { name: 'All Files', extensions: ['*'] }
     ]
   });
@@ -91,7 +91,7 @@ ipcMain.handle('shell:open-link', async (event, url) => {
 
 ipcMain.handle('scraper:start-gmaps', async (event, config) => {
   if (activeTask && activeTask.isRunning) {
-    return { success: false, message: 'Another task is currently running.' };
+    return { success: false, message: 'A task is already running.' };
   }
 
   activeTask = { isRunning: true, cancelled: false };
@@ -118,7 +118,7 @@ ipcMain.handle('scraper:start-gmaps', async (event, config) => {
 
 ipcMain.handle('scraper:start-twogis', async (event, config) => {
   if (activeTask && activeTask.isRunning) {
-    return { success: false, message: 'Another task is currently running.' };
+    return { success: false, message: 'A task is already running.' };
   }
 
   activeTask = { isRunning: true, cancelled: false };
