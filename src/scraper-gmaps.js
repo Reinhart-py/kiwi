@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const xlsx = require('xlsx');
 const createCsvWriter = require('csv-writer').createObjectCsvWriter;
-const { getExportsDir, updateProgress, saveHistoryItem } = require('./storage');
+const { getExportsDir, updateProgress, saveHistoryItem, clearActiveCheckpoint } = require('./storage');
 
 function loadTargetList(targetInput) {
   const clean = targetInput.replace(/["']/g, '').trim();
@@ -128,10 +128,18 @@ async function extractActivePane(page) {
 }
 
 async function runGmaps(config, control, log) {
-  const { target, cap = 0, startIdx = 0, initialSaved = 0 } = config;
+  const { target, cap = 0, initialSaved = 0 } = config;
   const queries = loadTargetList(target);
 
-  const safeName = target.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30);
+  let startIdx = Number(config.startIdx) || 0;
+  if (startIdx >= queries.length) {
+    log(`All ${queries.length} items from this file were already completed.`);
+    log('Resetting index to 0 to restart extraction.');
+    startIdx = 0;
+    clearActiveCheckpoint();
+  }
+
+  const safeName = path.basename(target).replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30);
   const csvPath = path.join(getExportsDir(), `gmaps_${safeName}.csv`);
   const fileExists = fs.existsSync(csvPath);
 
@@ -159,6 +167,7 @@ async function runGmaps(config, control, log) {
   });
 
   log(`Target queue: ${queries.length} queries`);
+  log(`Starting from query index: ${startIdx + 1}`);
   log(`Saving leads to: ${csvPath}`);
 
   const browser = await getBrowser();
