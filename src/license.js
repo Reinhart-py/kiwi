@@ -50,25 +50,28 @@ function removeKey() {
 }
 
 function formatExpiry(isoString) {
-  if (!isoString) return 'Lifetime License';
+  if (!isoString) return 'Permanent / Lifetime';
   try {
     const exp = new Date(isoString);
     const now = new Date();
     const diffMs = exp.getTime() - now.getTime();
     if (diffMs <= 0) return 'Expired';
     const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    if (days > 3650) {
+      return 'Permanent / Lifetime';
+    }
     const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
     const dateStr = exp.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-    if (days > 0) return `${dateStr} (${days} days left)`;
-    return `${dateStr} (${hours} hours left)`;
+    if (days > 0) return `${dateStr} (${days} days remaining)`;
+    return `${dateStr} (${hours} hours remaining)`;
   } catch {
-    return isoString.substring(0, 10);
+    return String(isoString).substring(0, 10);
   }
 }
 
 async function verifyKey(key) {
   if (!key || !key.trim()) {
-    return { passed: false, msg: 'Please enter a license key.' };
+    return { passed: false, msg: 'License key required.' };
   }
 
   const hwid = getHwid();
@@ -92,13 +95,13 @@ async function verifyKey(key) {
   } catch (err) {
     if (err.response && err.response.data && err.response.data.message) {
       const msg = err.response.data.message;
-      if (msg === 'key_expired') return { passed: false, msg: 'This license has expired.' };
-      if (msg === 'hwid_mismatch') return { passed: false, msg: 'Key is registered to another device.' };
-      if (msg === 'key_inactive') return { passed: false, msg: 'This key has been deactivated.' };
-      if (msg === 'key_not_found') return { passed: false, msg: 'Invalid license key.' };
-      return { passed: false, msg: `Access denied: ${msg}` };
+      if (msg === 'key_expired') return { passed: false, msg: 'License duration expired.' };
+      if (msg === 'hwid_mismatch') return { passed: false, msg: 'Key registered to another workstation.' };
+      if (msg === 'key_inactive') return { passed: false, msg: 'License deactivated.' };
+      if (msg === 'key_not_found') return { passed: false, msg: 'Key not found.' };
+      return { passed: false, msg: `Denied: ${msg}` };
     }
-    return { passed: false, msg: 'Could not reach license server. Check your internet connection.' };
+    return { passed: false, msg: 'Connection to auth node failed.' };
   }
 }
 
