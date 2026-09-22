@@ -86,10 +86,12 @@ async function extractActivePane(page) {
     const phoneHandles = await page.$$('button[data-item-id^="phone:"], button[aria-label*="Phone"], a[href^="tel:"]');
     const rawPhones = [];
     for (const el of phoneHandles) {
-      const text = await el.innerText();
-      const href = await el.getAttribute('href');
-      if (text) rawPhones.push(text.replace('Phone:', '').trim());
-      if (href && href.startsWith('tel:')) rawPhones.push(href.replace('tel:', '').trim());
+      try {
+        const text = await el.innerText();
+        const href = await el.getAttribute('href');
+        if (text) rawPhones.push(text.replace('Phone:', '').trim());
+        if (href && href.startsWith('tel:')) rawPhones.push(href.replace('tel:', '').trim());
+      } catch {}
     }
     const ranked = rankPhones(rawPhones);
     if (ranked.length > 0) data.phone_1 = ranked[0];
@@ -156,8 +158,8 @@ async function runGmaps(config, control, log) {
     date: new Date().toISOString()
   });
 
-  log(`Loaded ${queries.length} queries. Saving results to:`);
-  log(csvPath);
+  log(`Target queue: ${queries.length} queries`);
+  log(`Output: ${csvPath}`);
 
   const browser = await getBrowser();
   const context = await browser.newContext({ locale: 'en-US' });
@@ -168,12 +170,12 @@ async function runGmaps(config, control, log) {
   try {
     for (let i = startIdx; i < queries.length; i++) {
       if (control.cancelled) {
-        log('Task paused by user.');
+        log('Execution paused.');
         break;
       }
 
       if (cap > 0 && totalSaved >= cap) {
-        log(`Target limit of ${cap} leads reached.`);
+        log(`Harvest threshold of ${cap} records satisfied.`);
         break;
       }
 
@@ -184,19 +186,25 @@ async function runGmaps(config, control, log) {
         ? q
         : `https://www.google.com/maps/search/${encodeURIComponent(q)}?hl=en`;
 
-      await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 35000 });
+      try {
+        await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 35000 });
+      } catch (navErr) {
+        log(`Navigation timeout for: ${q}. Skipping.`);
+        updateProgress('gmaps', target, i + 1, totalSaved);
+        continue;
+      }
 
       try {
         const acceptBtn = await page.$('button[aria-label*="Accept all"], form button');
         if (acceptBtn) await acceptBtn.click();
       } catch {}
 
-      await page.waitForTimeout(2000);
+      await page.waitForTimeout(1500);
 
-      const isSinglePlace = page.url().includes('/maps/place/');
+      const isDirectPlace = page.url().includes('/maps/place/');
 
-      if (isSinglePlace) {
-        log('Single place resolved directly.');
+      if (isDirectPlace) {
+        log('Entity resolved directly into place view.');
         const details = await extractActivePane(page);
         if (details.title && details.title !== 'Unknown') {
           await csvWriter.writeRecords([{ query: q, ...details }]);
@@ -207,93 +215,112 @@ async function runGmaps(config, control, log) {
         continue;
       }
 
-      const seenLinks = new Set();
-      let scrolls = 0;
-      let noNewCardCount = 0;
+      const seenUrls = new Set();
+      let scrollCycles = 0;
+      let stagnantCount = 0;
 
-      while (scrolls < 25) {
+      while (scrollCycles < 25) {
         if (control.cancelled) break;
         if (cap > 0 && totalSaved >= cap) break;
 
-        const cards = await page.$$('div[role="feed"] a[href*="/maps/place/"], a[href*="/maps/place/"]');
-
-        if (cards.length === 0) {
-          const endMarker = await page.$('span:has-text("No more results"), div:has-text("Partial match")');
-          if (endMarker) break;
+        let visibleHrefs = [];
+        try {
+          visibleHrefs = await page.$$eval(
+            'div[role="feed"] a[href*="/maps/place/"], a[href*="/maps/place/"]',
+            (elements) => elements.map((el) => el.href).filter(Boolean)
+          );
+        } catch {
+          visibleHrefs = [];
         }
 
-        let newFound = 0;
+        if (visibleHrefs.length === 0) {
+          const isDeadEnd = await page.$('span:has-text("No more results"), div:has-text("Partial match"), div:has-text("No results found")');
+          if (isDeadEnd) break;
+        }
 
-        for (const card of cards) {
+        let newRecordsThisCycle = 0;
+
+        for (const href of visibleHrefs) {
           if (control.cancelled) break;
           if (cap > 0 && totalSaved >= cap) break;
-
-          const href = await card.getAttribute('href');
-          if (!href || seenLinks.has(href)) continue;
-          seenLinks.add(href);
+          if (seenUrls.has(href)) continue;
+          seenUrls.add(href);
 
           try {
-            await card.scrollIntoViewIfNeeded();
-            await card.click();
-            await page.waitForTimeout(1500);
+            const cardLocator = page.locator(`a[href="${href}"]`).first();
+            await cardLocator.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
+            await cardLocator.click({ timeout: 3000 }).catch(() => {});
+
+            await page.waitForSelector('h1.DUwDvf, button[data-item-id="address"]', { timeout: 6000 }).catch(() => {});
 
             const details = await extractActivePane(page);
             if (details.title && details.title !== 'Unknown') {
               await csvWriter.writeRecords([{ query: q, ...details }]);
               totalSaved++;
-              newFound++;
-              log(`Saved #${totalSaved}: ${details.title.substring(0, 24)} | ${details.phone_1}`);
+              newRecordsThisCycle++;
+              log(`Saved #${totalSaved}: ${details.title.substring(0, 22)} | ${details.phone_1}`);
             }
 
-            const backBtn = await page.$('button[aria-label="Back"], button[jsaction*="pane.back"]');
+            const backBtn = await page.$('button[aria-label="Back"], button[jsaction*="pane.back"], button[aria-label="Close"]');
             if (backBtn) {
-              await backBtn.click();
-              await page.waitForTimeout(1000);
+              await backBtn.click().catch(() => {});
             } else {
-              await page.goBack();
-              await page.waitForTimeout(1000);
+              await page.goBack().catch(() => {});
             }
-          } catch {
+
+            await page.waitForSelector('div[role="feed"]', { timeout: 5000 }).catch(() => {});
+            await page.waitForTimeout(400);
+          } catch (cardError) {
             try {
-              await page.goBack();
+              await page.goBack().catch(() => {});
+              await page.waitForTimeout(500);
             } catch {}
           }
         }
 
-        const isEnd = await page.$('span:has-text("reached the end of the list"), div.HlvSq, div:has-text("Partial match")');
-        if (isEnd) {
-          log('End of results list reached.');
+        let hasReachedEnd = false;
+        try {
+          const endMarker = await page.$('span:has-text("reached the end of the list"), div.HlvSq, div:has-text("Partial match")');
+          if (endMarker) hasReachedEnd = true;
+        } catch {}
+
+        if (hasReachedEnd) {
+          log('Directory feed exhausted.');
           break;
         }
 
-        if (newFound === 0) {
-          noNewCardCount++;
+        if (newRecordsThisCycle === 0) {
+          stagnantCount++;
         } else {
-          noNewCardCount = 0;
+          stagnantCount = 0;
         }
 
-        if (noNewCardCount >= 2) {
+        if (stagnantCount >= 2) {
           break;
         }
 
         try {
-          const feed = await page.$('div[role="feed"]');
-          if (feed) {
-            await feed.evaluate((el) => el.scrollBy(0, 1000));
+          const feedElement = await page.$('div[role="feed"]');
+          if (feedElement) {
+            await feedElement.evaluate((el) => el.scrollBy(0, 900));
           } else {
-            await page.evaluate(() => window.scrollBy(0, 1000));
+            await page.evaluate(() => window.scrollBy(0, 900));
           }
-          await page.waitForTimeout(1500);
-        } catch {}
+          await page.waitForTimeout(1200);
+        } catch {
+          break;
+        }
 
-        scrolls++;
+        scrollCycles++;
       }
 
       updateProgress('gmaps', target, i + 1, totalSaved);
     }
   } finally {
-    await browser.close();
-    log('Google Maps task finished.');
+    try {
+      await browser.close();
+    } catch {}
+    log('Google Maps process finished.');
   }
 }
 
