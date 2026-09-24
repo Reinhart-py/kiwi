@@ -1,327 +1,631 @@
-const { chromium } = require('playwright-core');
-const fs = require('fs');
-const path = require('path');
-const xlsx = require('xlsx');
-const createCsvWriter = require('csv-writer').createObjectCsvWriter;
-const { getExportsDir, updateProgress, saveHistoryItem, clearActiveCheckpoint } = require('./storage');
-
-function loadTargetList(targetInput) {
-  const clean = targetInput.replace(/["']/g, '').trim();
-  if (fs.existsSync(clean) && fs.statSync(clean).isFile()) {
-    const ext = path.extname(clean).toLowerCase();
-    if (ext === '.csv') {
-      const content = fs.readFileSync(clean, 'utf8');
-      return content
-        .split(/\r?\n/)
-        .map((l) => l.trim())
-        .filter(Boolean);
-    }
-    if (ext === '.xlsx' || ext === '.xls') {
-      const workbook = xlsx.readFile(clean);
-      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-      const json = xlsx.utils.sheet_to_json(firstSheet, { header: 1 });
-      const items = [];
-      for (const row of json) {
-        if (Array.isArray(row)) {
-          const combined = row.map((cell) => String(cell || '').trim()).filter(Boolean).join(' ');
-          if (combined) items.push(combined);
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Kiri</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+      },
+      colors: {
+        brand: {
+          emerald: '#10B981',
+          green: '#22C55E',
+          dark: '#0C1311',
+          sidebar: '#0C1412',
+          surface: '#F4F7F5',
         }
       }
-      return items.length ? items : [clean];
     }
-    const content = fs.readFileSync(clean, 'utf8');
-    return content
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter(Boolean);
-  }
-  return [clean];
-}
-
-async function getBrowser() {
-  const launchOptions = {
-    headless: false,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--lang=en-US']
-  };
-
-  try {
-    return await chromium.launch({ ...launchOptions, channel: 'chrome' });
-  } catch {
-    return await chromium.launch({ ...launchOptions, channel: 'msedge' });
   }
 }
-
-function rankPhones(phones) {
-  function score(p) {
-    const clean = p.replace(/[^\d+]/g, '');
-    if (clean.startsWith('+9715') || clean.startsWith('009715') || clean.startsWith('05')) return 0;
-    if (/^(\+91|91|0)?[6-9]\d{9}$/.test(clean)) return 1;
-    if (clean.startsWith('+447') || clean.startsWith('07')) return 2;
-    if (/800|\+971800|1800/.test(clean)) return 10;
-    return 5;
-  }
-  const unique = Array.from(new Set(phones.map((p) => p.trim()).filter(Boolean)));
-  return unique.sort((a, b) => score(a) - score(b));
+</script>
+<style>
+body {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  background: radial-gradient(circle at 50% 40%, #0D3824 0%, #061C12 50%, #020906 100%);
+  min-height: 100vh;
+  margin: 0;
+  color: #111827;
+  -webkit-font-smoothing: antialiased;
 }
-
-async function extractActivePane(page) {
-  const data = {
-    title: 'Unknown',
-    phone_1: 'None',
-    phone_2: 'None',
-    website: 'None',
-    address: 'None',
-    rating: 'None',
-    reviews: 'None'
-  };
-
-  try {
-    const titleEl = await page.$('h1.DUwDvf');
-    if (titleEl) {
-      data.title = (await titleEl.innerText()).trim();
-    }
-  } catch {}
-
-  try {
-    const phoneHandles = await page.$$('button[data-item-id^="phone:"], button[aria-label*="Phone"], a[href^="tel:"]');
-    const rawPhones = [];
-    for (const el of phoneHandles) {
-      try {
-        const text = await el.innerText();
-        const href = await el.getAttribute('href');
-        if (text) rawPhones.push(text.replace('Phone:', '').trim());
-        if (href && href.startsWith('tel:')) rawPhones.push(href.replace('tel:', '').trim());
-      } catch {}
-    }
-    const ranked = rankPhones(rawPhones);
-    if (ranked.length > 0) data.phone_1 = ranked[0];
-    if (ranked.length > 1) data.phone_2 = ranked[1];
-  } catch {}
-
-  try {
-    const addrEl = await page.$('button[data-item-id="address"], button[aria-label*="Address"]');
-    if (addrEl) {
-      data.address = (await addrEl.innerText()).replace('Address:', '').trim();
-    }
-  } catch {}
-
-  try {
-    const webEl = await page.$('a[data-item-id="authority"], a[aria-label*="Website"]');
-    if (webEl) {
-      data.website = (await webEl.getAttribute('href')) || 'None';
-    }
-  } catch {}
-
-  try {
-    const ratingEl = await page.$('div.F7nice span[aria-hidden="true"]');
-    if (ratingEl) {
-      data.rating = (await ratingEl.innerText()).trim();
-    }
-    const revsEl = await page.$('div.F7nice span[aria-label*="reviews"]');
-    if (revsEl) {
-      const text = await revsEl.innerText();
-      data.reviews = text.replace(/[^\d]/g, '');
-    }
-  } catch {}
-
-  return data;
+.window-shadow {
+  box-shadow: 0 35px 80px -15px rgba(0, 0, 0, 0.8),
+              0 0 1px 1px rgba(255, 255, 255, 0.08),
+              0 0 45px rgba(16, 185, 129, 0.08);
 }
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 999px;
+}
+.glass-pill {
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.glass-pill:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+</style>
+</head>
+<body class="p-3 sm:p-5 lg:p-6 flex items-center justify-center select-none overflow-hidden h-screen">
 
-async function runGmaps(config, control, log) {
-  const { target, cap = 0, initialSaved = 0 } = config;
-  const queries = loadTargetList(target);
+<div id="view-auth" class="w-full max-w-[420px] bg-white rounded-[32px] p-8 shadow-2xl text-center flex flex-col items-center border border-neutral-100">
+  <div class="mb-5 flex items-center justify-center">
+    <div class="w-10 h-10 rounded-2xl bg-neutral-900 flex items-center justify-center shadow-sm">
+      <div class="flex items-center space-x-1">
+        <span class="w-1 h-4 bg-white rounded-full"></span>
+        <span class="w-1 h-3 bg-white/70 rounded-full"></span>
+        <span class="w-1 h-2 bg-white/40 rounded-full"></span>
+      </div>
+    </div>
+    <span class="ml-2.5 text-xl font-bold tracking-tight text-neutral-900">Kiri</span>
+  </div>
 
-  let startIdx = Number(config.startIdx) || 0;
-  if (startIdx >= queries.length) {
-    log(`All ${queries.length} items from this file were already completed.`);
-    log('Resetting index to 0 to restart extraction.');
-    startIdx = 0;
-    clearActiveCheckpoint();
-  }
+  <h1 class="text-xl font-bold tracking-tight text-neutral-900">License Verification</h1>
+  <p class="text-xs text-neutral-500 mt-1.5 leading-relaxed">
+    Enter your key below to unlock your workspace.
+  </p>
 
-  const safeName = path.basename(target).replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30);
-  const csvPath = path.join(getExportsDir(), `gmaps_${safeName}.csv`);
-  const fileExists = fs.existsSync(csvPath);
+  <form class="w-full mt-6 space-y-3" onsubmit="event.preventDefault(); window.submitAuth();">
+    <div>
+      <input id="auth-key-input" autocomplete="off" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX" class="w-full text-center tracking-widest text-xs px-4 py-3 bg-neutral-50 border border-neutral-200 rounded-xl text-neutral-900 placeholder-neutral-400 focus:outline-none focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900 transition-all" type="text"/>
+    </div>
+    <div id="auth-error" class="text-xs text-rose-500 font-medium min-h-[16px]"></div>
+    <button id="auth-submit-btn" type="submit" class="w-full py-3 px-4 bg-neutral-900 hover:bg-neutral-800 active:bg-black text-white text-xs font-semibold rounded-xl transition-all shadow-sm">
+      Activate License
+    </button>
+  </form>
 
-  const csvWriter = createCsvWriter({
-    path: csvPath,
-    header: [
-      { id: 'query', title: 'Query' },
-      { id: 'title', title: 'Business Name' },
-      { id: 'phone_1', title: 'Primary Phone' },
-      { id: 'phone_2', title: 'Secondary Phone' },
-      { id: 'website', title: 'Website' },
-      { id: 'address', title: 'Address' },
-      { id: 'rating', title: 'Rating' },
-      { id: 'reviews', title: 'Reviews' }
-    ],
-    append: fileExists
+  <div class="w-full mt-6 pt-5 border-t border-neutral-100">
+    <p class="text-[11px] text-neutral-400 mb-3">Need a license key?</p>
+    <div class="grid grid-cols-2 gap-2.5">
+      <button onclick="window.api.openLink('https://wa.me/13153701897')" class="flex items-center justify-center space-x-2 py-2 px-3 rounded-xl border border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50 text-neutral-700 transition-all text-xs font-medium">
+        <svg class="w-3.5 h-3.5 text-emerald-600 fill-current shrink-0" viewBox="0 0 24 24"><path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.711 2.599 2.679-.702c.972.575 1.761.882 2.781.882h.001c3.182 0 5.767-2.587 5.768-5.766 0-3.182-2.586-5.766-5.769-5.766zm3.374 8.167c-.145.407-.84.773-1.157.822-.317.049-.731.074-2.146-.511-1.705-.705-2.793-2.457-2.879-2.571-.086-.114-.689-.916-.689-1.747 0-.831.436-1.24.592-1.409.155-.169.34-.212.453-.212.113 0 .227 0 .327.006.105.005.244-.04.382.291.144.346.491 1.196.534 1.282.043.086.072.188.014.303-.058.115-.087.188-.173.288-.087.1-.182.224-.26.3-.087.086-.178.18-.077.353.101.173.449.741.964 1.2.663.591 1.222.774 1.395.86.173.086.275.072.376-.044.101-.115.433-.504.549-.677.116-.173.231-.144.39-.086.159.058 1.01.476 1.184.563.173.087.289.13.332.202.044.072.044.419-.101.826z"></path><path d="M12 2C6.477 2 2 6.477 2 12c0 1.891.528 3.662 1.448 5.176L2 22l4.981-1.306A9.957 9.957 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 12 2zm0 18.067c-1.637 0-3.15-.497-4.409-1.353l-.316-.217-2.957.773.789-2.885-.236-.376A8.026 8.026 0 014 12c0-4.411 3.589-8.067 8-8.067s8 3.656 8 8.067-3.589 8.067-8 8.067z"></path></svg>
+        <span>WhatsApp</span>
+      </button>
+      <button onclick="window.api.openLink('https://t.me/kiri0507')" class="flex items-center justify-center space-x-2 py-2 px-3 rounded-xl border border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50 text-neutral-700 transition-all text-xs font-medium">
+        <svg class="w-3.5 h-3.5 text-sky-500 fill-current shrink-0" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.75-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"></path></svg>
+        <span>Telegram</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<main id="view-app" class="hidden w-full max-w-[1400px] h-[92vh] bg-brand-dark rounded-[36px] overflow-hidden window-shadow border border-emerald-950/40 flex flex-col lg:flex-row transition-all duration-300 relative">
+
+  <aside class="w-full lg:w-[260px] xl:w-[275px] bg-brand-sidebar p-5 lg:p-6 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-emerald-950/40 select-none shrink-0">
+    <div class="space-y-6">
+      <div class="flex items-center gap-3 px-1">
+        <div class="flex items-end gap-[3px] h-6">
+          <span class="w-[4px] h-3.5 bg-emerald-500 rounded-full"></span>
+          <span class="w-[4px] h-6 bg-emerald-400 rounded-full"></span>
+          <span class="w-[4px] h-4 bg-emerald-500 rounded-full"></span>
+        </div>
+        <span class="text-white text-xl font-bold tracking-tight">Kiri</span>
+      </div>
+
+      <div class="w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl glass-pill">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <div class="w-7 h-7 rounded-xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-emerald-400 shrink-0 font-bold text-xs">
+            R
+          </div>
+          <div class="truncate">
+            <span class="text-[10px] uppercase font-semibold tracking-wider text-emerald-300/70 block leading-tight">Account</span>
+            <span id="sidebar-owner-name" class="text-xs font-semibold text-gray-200 block truncate">Reinhart</span>
+          </div>
+        </div>
+      </div>
+
+      <nav class="space-y-1">
+        <span class="text-[10px] font-bold tracking-wider text-gray-500 uppercase px-2 mb-2 block">Menu</span>
+        <button onclick="switchTab('dashboard')" id="nav-dashboard" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/10 text-white font-medium text-xs shadow-inner transition-all text-left">
+          <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect height="7" rx="1.5" width="7" x="3" y="3"></rect><rect height="7" rx="1.5" width="7" x="14" y="3"></rect><rect height="7" rx="1.5" width="7" x="14" y="14"></rect><rect height="7" rx="1.5" width="7" x="3" y="14"></rect></svg>
+          <span>Dashboard</span>
+        </button>
+        <button onclick="switchTab('gmaps')" id="nav-gmaps" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-400 hover:text-white hover:bg-white/5 text-xs font-medium transition-colors text-left">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+          <span>Google Maps</span>
+        </button>
+        <button onclick="switchTab('twogis')" id="nav-twogis" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-400 hover:text-white hover:bg-white/5 text-xs font-medium transition-colors text-left">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"></path></svg>
+          <span>2GIS</span>
+        </button>
+        <button onclick="switchTab('history')" id="nav-history" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-400 hover:text-white hover:bg-white/5 text-xs font-medium transition-colors text-left">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 3"></path></svg>
+          <span>History</span>
+        </button>
+        <button onclick="switchTab('developer')" id="nav-developer" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-400 hover:text-white hover:bg-white/5 text-xs font-medium transition-colors text-left">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+          <span>Developer</span>
+        </button>
+      </nav>
+    </div>
+
+    <div class="pt-5 border-t border-emerald-950/40">
+      <div class="flex items-center justify-between p-2 rounded-2xl bg-white/5 border border-white/5">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <div class="w-8 h-8 rounded-full overflow-hidden border border-emerald-400/40 shrink-0">
+            <img src="https://ik.imagekit.io/Reinhart/reinhart.png?updatedAt=1747593545727" class="w-full h-full object-cover"/>
+          </div>
+          <div class="truncate">
+            <div class="text-xs font-semibold text-white truncate">Reinhart</div>
+            <div id="sidebar-expiry-text" class="text-[10px] text-gray-400 truncate">Lifetime Access</div>
+          </div>
+        </div>
+        <button onclick="window.logout()" title="Logout" class="p-1 hover:text-rose-400 text-gray-400 transition-colors">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <section class="flex-1 bg-brand-surface rounded-t-[32px] lg:rounded-t-none lg:rounded-l-[32px] p-5 sm:p-6 lg:p-7 overflow-y-auto flex flex-col justify-between">
+
+    <div id="tab-dashboard" class="space-y-5">
+      <header class="flex items-center justify-between pb-4 border-b border-gray-200/60">
+        <div>
+          <h1 class="text-2xl font-bold text-gray-900 tracking-tight">Dashboard</h1>
+          <p class="text-xs text-gray-500 mt-0.5">Overview of your leads and search progress</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <span id="status-badge" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+            <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+            Ready
+          </span>
+          <button id="global-stop-btn" onclick="window.stopTask()" class="hidden px-4 py-1.5 rounded-full text-xs font-bold bg-rose-500 hover:bg-rose-600 text-white transition-all shadow-sm">
+            Stop
+          </button>
+        </div>
+      </header>
+
+      <div id="recovery-banner" class="hidden bg-[#12231b] text-white rounded-2xl p-4 flex items-center justify-between border border-emerald-800/40 shadow-sm">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-xl bg-emerald-500 flex items-center justify-center text-black font-bold text-sm">
+            !
+          </div>
+          <div>
+            <h4 class="text-xs font-bold uppercase tracking-wider text-emerald-300">Resume Previous Search</h4>
+            <p id="recovery-text" class="text-xs text-gray-300 mt-0.5">An interrupted task is available.</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="window.resumeActive()" class="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs transition-all shadow-sm">
+            Resume Now
+          </button>
+          <button onclick="window.dismissActive()" class="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-medium transition-all">
+            Dismiss
+          </button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <article class="bg-[#12231b] rounded-2xl p-5 text-white shadow-sm flex items-center justify-between border border-emerald-800/40 relative overflow-hidden">
+          <div class="space-y-1.5 z-10">
+            <div class="text-[11px] font-medium text-emerald-300/80">Total Leads Saved</div>
+            <div id="stat-leads" class="text-2xl font-bold tracking-tight text-white">0</div>
+            <div class="text-[11px] font-semibold text-emerald-400">Direct verified contacts</div>
+          </div>
+          <div class="flex items-end gap-1.5 h-12 z-10">
+            <span class="w-2.5 h-7 bg-emerald-500 rounded-sm opacity-90"></span>
+            <span class="w-2.5 h-11 bg-emerald-400 rounded-sm"></span>
+            <span class="w-2.5 h-5 bg-emerald-500 rounded-sm opacity-70"></span>
+          </div>
+          <div class="absolute -right-6 -bottom-6 w-24 h-24 bg-emerald-500/10 rounded-full blur-xl pointer-events-none"></div>
+        </article>
+
+        <article class="bg-white rounded-2xl p-5 shadow-sm flex items-center justify-between border border-gray-100">
+          <div class="space-y-1.5">
+            <div class="text-[11px] font-medium text-gray-500">Search Queries</div>
+            <div id="stat-sessions" class="text-2xl font-bold tracking-tight text-gray-900">0</div>
+            <div class="text-[11px] font-semibold text-emerald-600">Saved in history</div>
+          </div>
+          <div class="flex items-end gap-1.5 h-12">
+            <span class="w-2.5 h-6 bg-emerald-400 rounded-sm"></span>
+            <span class="w-2.5 h-10 bg-emerald-500 rounded-sm"></span>
+            <span class="w-2.5 h-5 bg-emerald-300 rounded-sm"></span>
+          </div>
+        </article>
+
+        <article class="bg-white rounded-2xl p-5 shadow-sm flex items-center justify-between border border-gray-100">
+          <div class="space-y-1.5">
+            <div class="text-[11px] font-medium text-gray-500">License</div>
+            <div id="stat-expiry" class="text-xl font-bold tracking-tight text-gray-900">Active</div>
+            <div id="stat-owner" class="text-[11px] font-semibold text-gray-400">Reinhart</div>
+          </div>
+          <div class="w-10 h-10 rounded-full bg-[#D5E8DC] flex items-center justify-center text-emerald-800 font-bold">
+            ✓
+          </div>
+        </article>
+      </div>
+
+      <article class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 flex flex-col justify-between space-y-3">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+            <h2 class="text-sm font-bold text-gray-900">Activity Log</h2>
+          </div>
+          <button onclick="document.getElementById('console-stream').innerHTML=''" class="text-[11px] font-medium text-gray-400 hover:text-gray-700">Clear</button>
+        </div>
+        <div id="console-stream" class="w-full h-72 bg-[#0C1412] text-emerald-400 font-mono text-xs rounded-xl p-4 overflow-y-auto leading-relaxed border border-emerald-950/60 shadow-inner space-y-1">
+          <div class="text-gray-500">Ready. Choose Google Maps or 2GIS to begin.</div>
+        </div>
+      </article>
+    </div>
+
+    <div id="tab-gmaps" class="hidden space-y-5">
+      <header class="pb-4 border-b border-gray-200/60">
+        <h1 class="text-2xl font-bold text-gray-900 tracking-tight">Google Maps</h1>
+        <p class="text-xs text-gray-500 mt-0.5">Find businesses, phone numbers, and websites from Google Maps</p>
+      </header>
+
+      <div class="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm space-y-5">
+        <div>
+          <label class="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">Search Query, Maps Link, or Batch File</label>
+          <div class="flex gap-2">
+            <input id="gmaps-input" type="text" class="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="e.g. Software companies in Business Bay" value="Software in Business Bay"/>
+            <button onclick="window.pickFile()" class="px-5 py-3 rounded-xl bg-black text-white font-semibold text-xs hover:bg-neutral-800 transition-colors">
+              Browse File
+            </button>
+          </div>
+          <p class="text-[11px] text-gray-400 mt-1.5">You can type a keyword, paste a Google Maps search URL, or select a .xlsx / .csv file.</p>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">Maximum leads to save (0 for all)</label>
+          <input id="gmaps-cap" type="number" class="w-48 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-emerald-500" value="100"/>
+        </div>
+
+        <button onclick="window.startGmapsTask()" id="gmaps-start-btn" class="px-6 py-3.5 rounded-xl bg-black hover:bg-neutral-800 text-white font-bold text-xs tracking-wide transition-all shadow-md">
+          Start Scraping
+        </button>
+      </div>
+    </div>
+
+    <div id="tab-twogis" class="hidden space-y-5">
+      <header class="pb-4 border-b border-gray-200/60">
+        <h1 class="text-2xl font-bold text-gray-900 tracking-tight">2GIS</h1>
+        <p class="text-xs text-gray-500 mt-0.5">Extract business contacts from 2GIS across UAE cities</p>
+      </header>
+
+      <div class="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm space-y-5">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">City</label>
+            <input id="twogis-city" type="text" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-emerald-500" value="Dubai"/>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">Keyword</label>
+            <input id="twogis-query" type="text" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-emerald-500" value="Software"/>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">Maximum leads to save (0 for all)</label>
+          <input id="twogis-cap" type="number" class="w-48 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-emerald-500" value="200"/>
+        </div>
+
+        <button onclick="window.startTwoGisTask()" id="twogis-start-btn" class="px-6 py-3.5 rounded-xl bg-black hover:bg-neutral-800 text-white font-bold text-xs tracking-wide transition-all shadow-md">
+          Start Scraping
+        </button>
+      </div>
+    </div>
+
+    <div id="tab-history" class="hidden space-y-5">
+      <header class="pb-4 border-b border-gray-200/60">
+        <h1 class="text-2xl font-bold text-gray-900 tracking-tight">History</h1>
+        <p class="text-xs text-gray-500 mt-0.5">Pick up any task right where it left off</p>
+      </header>
+
+      <div id="history-list" class="space-y-3">
+        <div class="text-xs text-gray-400">Loading history...</div>
+      </div>
+    </div>
+
+    <div id="tab-developer" class="hidden space-y-5">
+      <header class="pb-4 border-b border-gray-200/60">
+        <h1 class="text-2xl font-bold text-gray-900 tracking-tight">Developer</h1>
+        <p class="text-xs text-gray-500 mt-0.5">Author contact and information</p>
+      </header>
+
+      <div class="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm space-y-6">
+        <div class="flex items-center gap-4">
+          <div class="w-16 h-16 rounded-full overflow-hidden border-2 border-emerald-500 shadow-md shrink-0">
+            <img src="https://ik.imagekit.io/Reinhart/reinhart.png?updatedAt=1747593545727" class="w-full h-full object-cover"/>
+          </div>
+          <div>
+            <h3 class="text-lg font-bold text-gray-900">Reinhart aka Kiri</h3>
+            <p class="text-xs text-gray-500 font-medium">Software Developer</p>
+            <p class="text-xs italic text-emerald-700 font-semibold mt-1">"We do not do it because it's easy. We do it because we thought it would be easy."</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+          <button onclick="window.api.openLink('https://reinhart.pages.dev')" class="flex items-center justify-between p-4 rounded-xl bg-gray-50 hover:bg-gray-100 border border-gray-200 transition-colors text-left">
+            <div>
+              <div class="text-xs font-bold text-gray-900">Website & Portfolio</div>
+              <div class="text-[11px] text-gray-500">reinhart.pages.dev</div>
+            </div>
+            <span class="text-xs font-bold text-emerald-600">Open →</span>
+          </button>
+          <button onclick="window.api.openLink('https://t.me/kiri0507')" class="flex items-center justify-between p-4 rounded-xl bg-gray-50 hover:bg-gray-100 border border-gray-200 transition-colors text-left">
+            <div>
+              <div class="text-xs font-bold text-gray-900">Telegram</div>
+              <div class="text-[11px] text-gray-500">@kiri0507</div>
+            </div>
+            <span class="text-xs font-bold text-sky-500">Chat →</span>
+          </button>
+          <button onclick="window.api.openLink('https://wa.me/13153701897')" class="flex items-center justify-between p-4 rounded-xl bg-gray-50 hover:bg-gray-100 border border-gray-200 transition-colors text-left">
+            <div>
+              <div class="text-xs font-bold text-gray-900">WhatsApp</div>
+              <div class="text-[11px] text-gray-500">+1 (315) 370-1897</div>
+            </div>
+            <span class="text-xs font-bold text-emerald-600">Message →</span>
+          </button>
+          <button onclick="window.api.openLink('https://github.com/Reinhart-py')" class="flex items-center justify-between p-4 rounded-xl bg-gray-50 hover:bg-gray-100 border border-gray-200 transition-colors text-left">
+            <div>
+              <div class="text-xs font-bold text-gray-900">GitHub</div>
+              <div class="text-[11px] text-gray-500">Reinhart-py</div>
+            </div>
+            <span class="text-xs font-bold text-gray-800">View →</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </section>
+</main>
+
+<script>
+let activeTab = 'dashboard';
+let totalSavedCounter = 0;
+
+function switchTab(name) {
+  activeTab = name;
+  const allTabs = ['dashboard', 'gmaps', 'twogis', 'history', 'developer'];
+  allTabs.forEach(t => {
+    document.getElementById('tab-' + t).classList.add('hidden');
+    const nav = document.getElementById('nav-' + t);
+    nav.className = 'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-400 hover:text-white hover:bg-white/5 text-xs font-medium transition-colors text-left';
   });
+  document.getElementById('tab-' + name).classList.remove('hidden');
+  const activeNav = document.getElementById('nav-' + name);
+  activeNav.className = 'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/10 text-white font-medium text-xs shadow-inner transition-all text-left';
 
-  saveHistoryItem({
-    engine: 'gmaps',
-    target,
-    lastStep: startIdx,
-    totalSaved: initialSaved,
-    date: new Date().toISOString()
-  });
-
-  log(`Target queue: ${queries.length} queries`);
-  log(`Starting from query index: ${startIdx + 1}`);
-  log(`Saving leads to: ${csvPath}`);
-
-  const browser = await getBrowser();
-  const context = await browser.newContext({ locale: 'en-US' });
-  const page = await context.newPage();
-
-  let totalSaved = initialSaved;
-
-  try {
-    for (let i = startIdx; i < queries.length; i++) {
-      if (control.cancelled) {
-        log('Stopped by user.');
-        break;
-      }
-
-      if (cap > 0 && totalSaved >= cap) {
-        log(`Goal of ${cap} leads reached.`);
-        break;
-      }
-
-      const q = queries[i];
-      log(`[${i + 1}/${queries.length}] Searching: ${q}`);
-
-      const searchUrl = q.startsWith('http')
-        ? q
-        : `https://www.google.com/maps/search/${encodeURIComponent(q)}?hl=en`;
-
-      try {
-        await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 35000 });
-      } catch (navErr) {
-        log(`Search timed out for: ${q}. Skipping.`);
-        updateProgress('gmaps', target, i + 1, totalSaved);
-        continue;
-      }
-
-      try {
-        const acceptBtn = await page.$('button[aria-label*="Accept all"], form button');
-        if (acceptBtn) await acceptBtn.click();
-      } catch {}
-
-      await page.waitForTimeout(1800);
-
-      const isDirectPlace = page.url().includes('/maps/place/');
-
-      if (isDirectPlace) {
-        log('Single business resolved directly.');
-        const details = await extractActivePane(page);
-        if (details.title && details.title !== 'Unknown') {
-          await csvWriter.writeRecords([{ query: q, ...details }]);
-          totalSaved++;
-          log(`Saved #${totalSaved}: ${details.title} | ${details.phone_1}`);
-        }
-        updateProgress('gmaps', target, i + 1, totalSaved);
-        continue;
-      }
-
-      const seenUrls = new Set();
-      let scrollCycles = 0;
-      let stagnantCount = 0;
-
-      while (scrollCycles < 30) {
-        if (control.cancelled) break;
-        if (cap > 0 && totalSaved >= cap) break;
-
-        let visibleHrefs = [];
-        try {
-          visibleHrefs = await page.$$eval(
-            'div[role="feed"] a[href*="/maps/place/"], a[href*="/maps/place/"]',
-            (elements) => elements.map((el) => el.href).filter(Boolean)
-          );
-        } catch {
-          visibleHrefs = [];
-        }
-
-        if (visibleHrefs.length === 0) {
-          const isDeadEnd = await page.$('span:has-text("No more results"), div:has-text("Partial match"), div:has-text("No results found"), div:has-text("reached the end")');
-          if (isDeadEnd) break;
-        }
-
-        let newRecordsThisCycle = 0;
-
-        for (const href of visibleHrefs) {
-          if (control.cancelled) break;
-          if (cap > 0 && totalSaved >= cap) break;
-          if (seenUrls.has(href)) continue;
-          seenUrls.add(href);
-
-          let detailPage = null;
-          try {
-            detailPage = await context.newPage();
-            await detailPage.goto(href, { waitUntil: 'domcontentloaded', timeout: 15000 });
-            await detailPage.waitForSelector('h1.DUwDvf, button[data-item-id="address"]', { timeout: 6000 }).catch(() => {});
-
-            const details = await extractActivePane(detailPage);
-            if (details.title && details.title !== 'Unknown') {
-              await csvWriter.writeRecords([{ query: q, ...details }]);
-              totalSaved++;
-              newRecordsThisCycle++;
-              log(`Saved #${totalSaved}: ${details.title.substring(0, 26)} | ${details.phone_1}`);
-            }
-          } catch (cardError) {
-          } finally {
-            if (detailPage) {
-              try {
-                await detailPage.close();
-              } catch {}
-            }
-          }
-        }
-
-        let hasReachedEnd = false;
-        try {
-          const endMarker = await page.$('span:has-text("reached the end of the list"), div.HlvSq, div:has-text("Partial match"), div:has-text("No more results")');
-          if (endMarker) hasReachedEnd = true;
-        } catch {}
-
-        if (hasReachedEnd) {
-          log('Finished reading all results for this search.');
-          break;
-        }
-
-        if (newRecordsThisCycle === 0) {
-          stagnantCount++;
-        } else {
-          stagnantCount = 0;
-        }
-
-        if (stagnantCount >= 2) {
-          break;
-        }
-
-        try {
-          const feedElement = await page.$('div[role="feed"]');
-          if (feedElement) {
-            await feedElement.evaluate((el) => el.scrollBy(0, 1000));
-          } else {
-            await page.evaluate(() => window.scrollBy(0, 1000));
-          }
-          await page.waitForTimeout(1400);
-        } catch {
-          break;
-        }
-
-        scrollCycles++;
-      }
-
-      updateProgress('gmaps', target, i + 1, totalSaved);
-    }
-  } finally {
-    try {
-      await browser.close();
-    } catch {}
-    log('Done.');
+  if (name === 'history') {
+    loadHistoryList();
   }
 }
 
-module.exports = { runGmaps };
+function appendLog(line) {
+  const stream = document.getElementById('console-stream');
+  const div = document.createElement('div');
+  div.className = 'leading-relaxed break-words';
+  div.innerText = line;
+  stream.appendChild(div);
+  stream.scrollTop = stream.scrollHeight;
+
+  if (line.includes('Saved #')) {
+    totalSavedCounter++;
+    document.getElementById('stat-leads').innerText = totalSavedCounter.toLocaleString();
+  }
+}
+
+async function submitAuth() {
+  const input = document.getElementById('auth-key-input');
+  const errorBox = document.getElementById('auth-error');
+  const btn = document.getElementById('auth-submit-btn');
+
+  const key = input.value.trim();
+  if (!key) return;
+
+  errorBox.innerText = '';
+  btn.disabled = true;
+  btn.innerText = 'Checking...';
+
+  const res = await window.api.verifyLicense(key);
+  btn.disabled = false;
+  btn.innerText = 'Activate License';
+
+  if (res.passed) {
+    showDashboard(res);
+  } else {
+    errorBox.innerText = res.msg || 'Invalid key.';
+  }
+}
+
+function showDashboard(userData) {
+  document.getElementById('view-auth').classList.add('hidden');
+  document.getElementById('view-app').classList.remove('hidden');
+
+  document.getElementById('sidebar-owner-name').innerText = userData.owner || 'Reinhart';
+  document.getElementById('sidebar-expiry-text').innerText = userData.expires || 'Active';
+  document.getElementById('stat-owner').innerText = userData.owner || 'Reinhart';
+  document.getElementById('stat-expiry').innerText = userData.expires || 'Active';
+
+  checkCheckpoint();
+  refreshStats();
+}
+
+async function checkCheckpoint() {
+  const cp = await window.api.getActiveCheckpoint();
+  if (cp && cp.target) {
+    const banner = document.getElementById('recovery-banner');
+    document.getElementById('recovery-text').innerText = `${cp.engine.toUpperCase()}: ${cp.target} at query ${cp.lastStep || 1}`;
+    banner.classList.remove('hidden');
+  }
+}
+
+async function resumeActive() {
+  document.getElementById('recovery-banner').classList.add('hidden');
+  const cp = await window.api.getActiveCheckpoint();
+  if (cp) {
+    resumeTask(cp);
+  }
+}
+
+async function dismissActive() {
+  document.getElementById('recovery-banner').classList.add('hidden');
+  await window.api.dismissCheckpoint();
+  appendLog('Saved task dismissed.');
+}
+
+async function refreshStats() {
+  const history = await window.api.getHistory();
+  document.getElementById('stat-sessions').innerText = history.length;
+  totalSavedCounter = history.reduce((acc, curr) => acc + (curr.totalSaved || 0), 0);
+  document.getElementById('stat-leads').innerText = totalSavedCounter.toLocaleString();
+}
+
+async function loadHistoryList() {
+  const container = document.getElementById('history-list');
+  container.innerHTML = '<div class="text-xs text-gray-400">Loading...</div>';
+
+  const history = await window.api.getHistory();
+  if (!history || history.length === 0) {
+    container.innerHTML = '<div class="text-xs text-gray-400 p-4 bg-white rounded-2xl border border-gray-100">No saved searches yet.</div>';
+    return;
+  }
+
+  container.innerHTML = '';
+  history.forEach(item => {
+    const card = document.createElement('div');
+    card.className = 'bg-white rounded-2xl p-4 border border-gray-100 shadow-sm flex items-center justify-between';
+    card.innerHTML = `
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-black text-white uppercase">${item.engine}</span>
+          <h4 class="text-xs font-bold text-gray-900 truncate max-w-xs sm:max-w-md">${item.target}</h4>
+        </div>
+        <p class="text-[11px] text-gray-500 mt-1">Saved: <b class="text-gray-900">${item.totalSaved || 0}</b> leads | Step: <b class="text-gray-900">${item.lastStep || 1}</b></p>
+      </div>
+      <button onclick='window.resumeTask(${JSON.stringify(item)})' class="px-4 py-2 rounded-xl bg-black hover:bg-neutral-800 text-white font-bold text-xs transition-all">
+        Resume
+      </button>
+    `;
+    container.appendChild(card);
+  });
+}
+
+function setTaskRunning(running) {
+  const badge = document.getElementById('status-badge');
+  const stopBtn = document.getElementById('global-stop-btn');
+  const gmBtn = document.getElementById('gmaps-start-btn');
+  const tgBtn = document.getElementById('twogis-start-btn');
+
+  if (running) {
+    badge.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200';
+    badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span> Scraping';
+    stopBtn.classList.remove('hidden');
+    gmBtn.disabled = true;
+    tgBtn.disabled = true;
+  } else {
+    badge.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200';
+    badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500"></span> Ready';
+    stopBtn.classList.add('hidden');
+    gmBtn.disabled = false;
+    tgBtn.disabled = false;
+  }
+}
+
+async function startGmapsTask() {
+  const target = document.getElementById('gmaps-input').value.trim();
+  const cap = parseInt(document.getElementById('gmaps-cap').value) || 0;
+  if (!target) return;
+
+  switchTab('dashboard');
+  setTaskRunning(true);
+  appendLog(`Starting Google Maps for: ${target}`);
+  await window.api.startGmaps({ target, cap });
+}
+
+async function startTwoGisTask() {
+  const city = document.getElementById('twogis-city').value.trim();
+  const query = document.getElementById('twogis-query').value.trim();
+  const cap = parseInt(document.getElementById('twogis-cap').value) || 0;
+  if (!city || !query) return;
+
+  switchTab('dashboard');
+  setTaskRunning(true);
+  appendLog(`Starting 2GIS for: ${city} - ${query}`);
+  await window.api.startTwoGis({ city, query, cap });
+}
+
+async function resumeTask(item) {
+  switchTab('dashboard');
+  setTaskRunning(true);
+
+  if (item.engine === 'gmaps') {
+    appendLog(`Resuming Google Maps: ${item.target} from query ${item.lastStep || 0}...`);
+    await window.api.startGmaps({
+      target: item.target,
+      cap: item.cap || 0,
+      startIdx: item.lastStep || 0,
+      initialSaved: item.totalSaved || 0
+    });
+  } else if (item.engine === '2gis') {
+    const parts = (item.target || '').split(':');
+    const city = parts[0] || 'Dubai';
+    const query = parts[1] || '';
+    appendLog(`Resuming 2GIS: ${city} - ${query} from page ${item.lastStep || 1}...`);
+    await window.api.startTwoGis({
+      city,
+      query,
+      cap: item.cap || 0,
+      startPage: item.lastStep || 1,
+      initialSaved: item.totalSaved || 0
+    });
+  }
+}
+
+async function stopTask() {
+  appendLog('Stopping task...');
+  await window.api.stopScraper();
+}
+
+async function pickFile() {
+  const filePath = await window.api.openFile();
+  if (filePath) {
+    document.getElementById('gmaps-input').value = filePath;
+  }
+}
+
+async function logout() {
+  await window.api.logoutLicense();
+  document.getElementById('view-app').classList.add('hidden');
+  document.getElementById('view-auth').classList.remove('hidden');
+  document.getElementById('auth-key-input').value = '';
+}
+
+window.api.onLog((msg) => {
+  appendLog(msg);
+});
+
+window.api.onDone(() => {
+  setTaskRunning(false);
+  refreshStats();
+});
+
+window.addEventListener('DOMContentLoaded', async () => {
+  const saved = await window.api.checkSavedLicense();
+  if (saved && saved.passed) {
+    showDashboard(saved);
+  }
+});
+</script>
+</body>
+</html>
