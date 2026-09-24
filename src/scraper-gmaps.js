@@ -133,10 +133,10 @@ async function extractActivePane(page) {
   return data;
 }
 
-async function closePane(page) {
+async function returnToFeed(page) {
   try {
-    const backBtn = page.locator('button[aria-label="Back to results"], button[jsaction*="pane.back"], button[aria-label="Back"], button[aria-label="Close"]').first();
-    if (await backBtn.isVisible({ timeout: 800 }).catch(() => false)) {
+    const backBtn = page.locator('div[role="main"] button[aria-label="Back to results"], button[jsaction*="pane.back"], div[role="main"] button[aria-label="Back"]').first();
+    if (await backBtn.isVisible({ timeout: 600 }).catch(() => false)) {
       await backBtn.click().catch(() => {});
     } else {
       await page.keyboard.press('Escape').catch(() => {});
@@ -144,8 +144,40 @@ async function closePane(page) {
   } catch {
     await page.keyboard.press('Escape').catch(() => {});
   }
+
   await page.waitForSelector('div[role="feed"]', { timeout: 3000 }).catch(() => {});
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(250);
+}
+
+async function executeSearch(page, query) {
+  const searchUrl = query.startsWith('http')
+    ? query
+    : `https://www.google.com/maps/search/${encodeURIComponent(query)}?hl=en`;
+
+  await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 35000 });
+
+  try {
+    const acceptBtn = await page.$('button[aria-label*="Accept all"], form button');
+    if (acceptBtn) await acceptBtn.click();
+  } catch {}
+
+  await page.waitForTimeout(1800);
+
+  const isBlankMap = await page.evaluate(() => {
+    const input = document.querySelector('#searchboxinput');
+    const hasNoQuery = !input || !input.value.trim();
+    const isRoot = window.location.href.includes('/@') && !window.location.href.includes('/search/') && !window.location.href.includes('/place/');
+    return hasNoQuery && isRoot;
+  });
+
+  if (isBlankMap) {
+    const inputLocator = page.locator('#searchboxinput');
+    if (await inputLocator.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await inputLocator.fill(query);
+      await page.keyboard.press('Enter');
+      await page.waitForTimeout(2500);
+    }
+  }
 }
 
 async function runGmaps(config, control, log) {
@@ -154,8 +186,7 @@ async function runGmaps(config, control, log) {
 
   let startIdx = Number(config.startIdx) || 0;
   if (startIdx >= queries.length) {
-    log(`All ${queries.length} queries were already finished.`);
-    log('Restarting from query 1.');
+    log(`All ${queries.length} queries completed. Resetting to query 1.`);
     startIdx = 0;
     clearActiveCheckpoint();
   }
@@ -187,7 +218,8 @@ async function runGmaps(config, control, log) {
     date: new Date().toISOString()
   });
 
-  log(`Loaded ${queries.length} queries. Starting at query ${startIdx + 1}`);
+  log(`Target queue: ${queries.length} queries`);
+  log(`Starting at query ${startIdx + 1}`);
 
   const browser = await getBrowser();
   const context = await browser.newContext({ locale: 'en-US' });
@@ -203,31 +235,20 @@ async function runGmaps(config, control, log) {
       }
 
       if (cap > 0 && totalSaved >= cap) {
-        log(`Reached target limit of ${cap} leads.`);
+        log(`Target limit of ${cap} leads reached.`);
         break;
       }
 
       const q = queries[i];
       log(`[${i + 1}/${queries.length}] ${q}`);
 
-      const searchUrl = q.startsWith('http')
-        ? q
-        : `https://www.google.com/maps/search/${encodeURIComponent(q)}?hl=en`;
-
       try {
-        await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await executeSearch(page, q);
       } catch {
-        log(`Skipping: ${q}`);
+        log(`Failed loading: ${q}. Advancing.`);
         updateProgress('gmaps', target, i + 1, totalSaved);
         continue;
       }
-
-      try {
-        const acceptBtn = await page.$('button[aria-label*="Accept all"], form button');
-        if (acceptBtn) await acceptBtn.click();
-      } catch {}
-
-      await page.waitForTimeout(1600);
 
       if (page.url().includes('/maps/place/')) {
         const details = await extractActivePane(page);
@@ -240,7 +261,7 @@ async function runGmaps(config, control, log) {
         continue;
       }
 
-      const seenHrefs = new Set();
+      const seenUrls = new Set();
       let scrollRounds = 0;
       let idleScrolls = 0;
 
@@ -263,7 +284,7 @@ async function runGmaps(config, control, log) {
           if (isDead) break;
         }
 
-        const unvisited = visibleHrefs.filter((h) => !seenHrefs.has(h));
+        const unvisited = visibleHrefs.filter((h) => !seenUrls.has(h));
 
         if (unvisited.length > 0) {
           idleScrolls = 0;
@@ -272,7 +293,7 @@ async function runGmaps(config, control, log) {
             if (control.cancelled) break;
             if (cap > 0 && totalSaved >= cap) break;
 
-            seenHrefs.add(href);
+            seenUrls.add(href);
 
             try {
               const card = page.locator(`div[role="feed"] a[href="${href}"]`).first();
@@ -288,9 +309,9 @@ async function runGmaps(config, control, log) {
                 log(`Saved #${totalSaved}: ${details.title.substring(0, 24)} | ${details.phone_1}`);
               }
 
-              await closePane(page);
+              await returnToFeed(page);
             } catch {
-              await closePane(page);
+              await returnToFeed(page);
             }
           }
         } else {
@@ -299,7 +320,7 @@ async function runGmaps(config, control, log) {
 
         let isEndOfFeed = false;
         try {
-          const marker = await page.$('span:has-text("reached the end of the list"), div.HlvSq, div:has-text("Partial match")');
+          const marker = await page.$('span:has-text("reached the end of the list"), div.HlvSq, div:has-text("Partial match"), div:has-text("No more results")');
           if (marker) isEndOfFeed = true;
         } catch {}
 
