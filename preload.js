@@ -6,13 +6,17 @@ contextBridge.exposeInMainWorld('api', {
   logoutLicense: () => ipcRenderer.invoke('license:logout'),
 
   getHistory: () => ipcRenderer.invoke('storage:get-history'),
+  deleteHistory: (id) => ipcRenderer.invoke('storage:delete-history', id),
   getActiveCheckpoint: () => ipcRenderer.invoke('storage:get-active-checkpoint'),
   dismissCheckpoint: () => ipcRenderer.invoke('storage:dismiss-checkpoint'),
-  previewResults: (path) => ipcRenderer.invoke('results:preview', path),
+  previewCsv: (path) => ipcRenderer.invoke('storage:preview-csv', path),
 
-  pickBatchFile: () => ipcRenderer.invoke('dialog:pick-batch-file'),
+  pickFile: () => ipcRenderer.invoke('dialog:pick-file'),
+  parseFilePath: (path) => ipcRenderer.invoke('file:parse-path', path),
+  parseRawText: (text) => ipcRenderer.invoke('file:parse-text', text),
+
   openLink: (url) => ipcRenderer.invoke('shell:open-link', url),
-  openPath: (path) => ipcRenderer.invoke('shell:open-path', path),
+  openFile: (path) => ipcRenderer.invoke('shell:open-file', path),
   showInFolder: (path) => ipcRenderer.invoke('shell:show-in-folder', path),
 
   startGmaps: (config) => ipcRenderer.invoke('scraper:start-gmaps', config),
@@ -34,9 +38,9 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('scraper:finished', handler);
     return () => ipcRenderer.removeListener('scraper:finished', handler);
   },
-  onError: (callback) => {
-    const handler = (_event, msg) => callback(msg);
-    ipcRenderer.on('scraper:error', handler);
-    return () => ipcRenderer.removeListener('scraper:error', handler);
+  onFailed: (callback) => {
+    const handler = (_event, err) => callback(err);
+    ipcRenderer.on('scraper:failed', handler);
+    return () => ipcRenderer.removeListener('scraper:failed', handler);
   }
 });
