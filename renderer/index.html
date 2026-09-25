@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="h-full bg-black select-none">
+<html lang="en" class="h-full bg-black text-neutral-100 select-none">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -14,14 +14,9 @@ tailwind.config = {
         sans: ['"Plus Jakarta Sans"', 'sans-serif'],
       },
       colors: {
-        dark: {
-          950: '#070709',
-          900: '#0f0f13',
-          850: '#15151c',
-          800: '#1d1d26',
-          700: '#2b2b38',
-          600: '#404052'
-        }
+        panel: '#101014',
+        card: 'rgba(255, 255, 255, 0.035)',
+        cardHover: 'rgba(255, 255, 255, 0.06)'
       }
     }
   }
@@ -36,10 +31,10 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 .glass-panel {
-  background: rgba(18, 18, 23, 0.72);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(16, 16, 20, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 .glass-card {
   background: rgba(255, 255, 255, 0.03);
@@ -49,52 +44,56 @@ body {
   background: rgba(255, 255, 255, 0.05);
   border-color: rgba(255, 255, 255, 0.1);
 }
+.drag-over {
+  border-color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.14);
   border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.25);
 }
 </style>
 </head>
-<body class="h-screen w-screen flex overflow-hidden">
+<body class="h-screen w-screen flex flex-col overflow-hidden bg-[#09090b]">
 
-<div id="view-auth" class="w-full h-full flex items-center justify-center p-6 bg-black">
-  <div class="w-full max-w-[420px] glass-panel rounded-3xl p-8 sm:p-10 shadow-2xl flex flex-col items-center border border-white/10">
-    <div class="w-12 h-12 rounded-2xl bg-white flex items-center justify-center text-black mb-6 shadow-lg shadow-white/5 font-black text-xl">
+<div id="view-auth" class="w-full h-full flex items-center justify-center p-6 bg-black z-50">
+  <div class="w-full max-w-[420px] glass-panel rounded-3xl p-8 sm:p-10 shadow-2xl flex flex-col items-center">
+    <div class="w-12 h-12 rounded-2xl bg-white text-black flex items-center justify-center font-black text-xl mb-6 shadow-md">
       K
     </div>
 
-    <h1 class="text-2xl font-bold tracking-tight text-white">Welcome to Kiri</h1>
-    <p class="text-sm text-neutral-400 mt-2 text-center leading-relaxed">
-      Enter your license key to open your lead generation workspace.
+    <h1 class="text-2xl font-bold tracking-tight text-white">Unlock Kiri</h1>
+    <p class="text-xs text-neutral-400 mt-2 text-center leading-relaxed">
+      Enter your verified license key to open your lead generation workspace.
     </p>
 
     <form class="w-full mt-7 space-y-4" onsubmit="event.preventDefault(); submitAuth();">
       <div>
-        <input id="auth-key-input" autocomplete="off" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX" class="w-full text-center tracking-widest text-sm px-4 py-3.5 bg-neutral-900/80 border border-neutral-800 rounded-xl text-white placeholder-neutral-500 focus:outline-none focus:border-white focus:ring-1 focus:ring-white transition-all"/>
+        <input id="auth-key-input" autocomplete="off" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX" class="w-full text-center tracking-widest text-xs font-mono px-4 py-3.5 bg-neutral-900 border border-neutral-800 rounded-xl text-white placeholder-neutral-600 focus:outline-none focus:border-white transition-all"/>
       </div>
-      <div id="auth-error" class="text-xs text-rose-400 text-center font-medium min-h-[18px]"></div>
-      <button id="auth-submit-btn" type="submit" class="w-full py-3.5 px-4 bg-white hover:bg-neutral-200 active:bg-neutral-300 text-black text-sm font-bold rounded-xl transition-all shadow-md">
-        Continue
+      <div id="auth-error" class="text-xs text-rose-400 text-center font-medium min-h-[16px]"></div>
+      <button id="auth-submit-btn" type="submit" class="w-full py-3.5 px-4 bg-white hover:bg-neutral-200 active:bg-neutral-300 text-black text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-md">
+        Activate Kiri
       </button>
     </form>
 
-    <div class="w-full mt-8 pt-6 border-t border-white/5 text-center">
-      <p class="text-xs text-neutral-500 mb-3">Need a license key or renewal?</p>
+    <div class="w-full mt-8 pt-5 border-t border-white/5 text-center">
+      <div class="text-[11px] text-neutral-500 mb-3">Need assistance or license access?</div>
       <div class="grid grid-cols-2 gap-2">
-        <button onclick="window.api.openLink('https://wa.me/13153701897')" class="py-2.5 px-3 rounded-xl border border-white/10 hover:bg-white/5 text-neutral-300 text-xs font-semibold transition-all">
+        <button onclick="window.api.openLink('https://wa.me/13153701897')" class="py-2.5 px-3 rounded-xl border border-white/10 hover:bg-white/5 text-neutral-300 text-xs font-medium transition-all">
           WhatsApp
         </button>
-        <button onclick="window.api.openLink('https://t.me/kiri0507')" class="py-2.5 px-3 rounded-xl border border-white/10 hover:bg-white/5 text-neutral-300 text-xs font-semibold transition-all">
+        <button onclick="window.api.openLink('https://t.me/kiri0507')" class="py-2.5 px-3 rounded-xl border border-white/10 hover:bg-white/5 text-neutral-300 text-xs font-medium transition-all">
           Telegram
         </button>
       </div>
@@ -102,9 +101,9 @@ body {
   </div>
 </div>
 
-<div id="view-app" class="hidden w-full h-full flex flex-col md:flex-row bg-[#09090b]">
+<div id="view-app" class="hidden w-full h-full flex flex-col md:flex-row bg-[#09090b] relative">
 
-  <aside class="w-full md:w-64 bg-[#0c0c0f] border-r border-white/5 p-5 flex flex-col justify-between shrink-0">
+  <aside class="w-full md:w-64 bg-[#0d0d10] border-r border-white/5 p-5 flex flex-col justify-between shrink-0">
     <div class="space-y-6">
       <div class="flex items-center gap-3 px-2">
         <div class="w-8 h-8 rounded-xl bg-white text-black flex items-center justify-center font-black text-sm">
@@ -116,14 +115,14 @@ body {
         </div>
       </div>
 
-      <nav class="space-y-1.5 pt-2">
+      <nav class="space-y-1.5 pt-1">
         <button onclick="navigate('dashboard')" id="nav-dashboard" class="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl bg-white text-black font-bold text-xs transition-all text-left">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
           <span>Dashboard</span>
         </button>
-        <button onclick="navigate('search')" id="nav-search" class="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-neutral-400 hover:text-white hover:bg-white/5 font-semibold text-xs transition-all text-left">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-          <span>New Search</span>
+        <button onclick="openNewSearchFlow()" id="nav-search" class="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-neutral-400 hover:text-white hover:bg-white/5 font-semibold text-xs transition-all text-left">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"></path></svg>
+          <span>Start New Search</span>
         </button>
         <button onclick="navigate('history')" id="nav-history" class="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-neutral-400 hover:text-white hover:bg-white/5 font-semibold text-xs transition-all text-left">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
@@ -133,12 +132,14 @@ body {
     </div>
 
     <div class="space-y-3 pt-4 border-t border-white/5">
-      <div class="p-3 rounded-2xl glass-card">
-        <div class="flex items-center justify-between mb-1">
-          <span class="text-[11px] font-semibold text-white">License Active</span>
-          <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+      <div class="p-3.5 rounded-2xl glass-card">
+        <div class="flex items-center justify-between">
+          <span class="text-[11px] font-bold text-white tracking-wide">License</span>
+          <span class="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-400">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Active
+          </span>
         </div>
-        <div id="license-expiry-label" class="text-[10px] text-neutral-400">Active Account</div>
+        <div id="license-expiry-label" class="text-[11px] text-neutral-400 mt-1">Active · 28 days remaining</div>
       </div>
       <button onclick="logout()" class="w-full flex items-center justify-between px-3 py-2 text-[11px] text-neutral-500 hover:text-neutral-300 font-medium transition-colors">
         <span>Sign Out</span>
@@ -147,183 +148,193 @@ body {
     </div>
   </aside>
 
-  <main class="flex-1 flex flex-col overflow-y-auto p-6 md:p-10 space-y-8">
+  <main class="flex-1 flex flex-col overflow-y-auto p-6 md:p-10 space-y-8 relative">
 
-    <div id="section-welcome" class="hidden p-6 rounded-3xl border border-white/10 bg-gradient-to-r from-neutral-900 to-neutral-950 flex flex-col md:flex-row md:items-center justify-between gap-4">
-      <div>
-        <h2 class="text-xl font-bold text-white">Find business leads in seconds</h2>
-        <p class="text-xs text-neutral-400 mt-1 max-w-lg leading-relaxed">
-          Type your target industry, paste Google Maps links, or load a batch spreadsheet. Kiri extracts verified phone numbers, websites, and business addresses directly into a clean CSV.
-        </p>
-      </div>
-      <button onclick="navigate('search')" class="px-5 py-3 rounded-xl bg-white hover:bg-neutral-200 text-black font-bold text-xs transition-all shrink-0">
-        Start First Search
-      </button>
-    </div>
-
-    <div id="checkpoint-banner" class="hidden p-4 rounded-2xl border border-amber-500/20 bg-amber-500/5 flex items-center justify-between gap-4">
+    <div id="checkpoint-banner" class="hidden p-5 rounded-2xl border border-amber-500/25 bg-amber-500/10 flex items-center justify-between gap-4">
       <div class="flex items-center gap-3">
-        <div class="w-8 h-8 rounded-xl bg-amber-400 text-black flex items-center justify-center font-bold text-xs shrink-0">
+        <div class="w-8 h-8 rounded-xl bg-amber-400 text-black flex items-center justify-center font-black text-xs shrink-0">
           !
         </div>
         <div>
-          <div class="text-xs font-bold text-white">Unfinished Search Available</div>
-          <div id="checkpoint-desc" class="text-xs text-neutral-400 mt-0.5">Pick up where you left off.</div>
+          <div class="text-xs font-bold text-white">Paused Search Available</div>
+          <div id="checkpoint-desc" class="text-xs text-neutral-300 mt-0.5">12 of 25 searches completed · 1,240 leads already saved</div>
         </div>
       </div>
       <div class="flex items-center gap-2">
         <button id="checkpoint-resume-btn" class="px-4 py-2 bg-white hover:bg-neutral-200 text-black font-bold text-xs rounded-xl transition-all">
-          Continue
+          Resume Search
         </button>
-        <button onclick="dismissCheckpoint()" class="px-3 py-2 text-neutral-400 hover:text-white text-xs font-semibold">
+        <button onclick="dismissActiveCheckpoint()" class="px-3 py-2 text-neutral-400 hover:text-white text-xs font-semibold">
           Dismiss
         </button>
       </div>
     </div>
 
     <div id="page-dashboard" class="space-y-8">
-      <div>
-        <h1 class="text-2xl font-extrabold tracking-tight text-white">Overview</h1>
-        <p class="text-xs text-neutral-400 mt-1">Status of your leads and latest activity.</p>
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 class="text-3xl font-extrabold tracking-tight text-white">Dashboard</h1>
+          <p class="text-xs text-neutral-400 mt-1">Direct access to search pipelines and saved exports.</p>
+        </div>
+        <button onclick="openNewSearchFlow()" class="px-6 py-3.5 bg-white hover:bg-neutral-200 active:bg-neutral-300 text-black font-bold text-xs uppercase tracking-wider rounded-2xl transition-all shadow-md flex items-center gap-2 self-start sm:self-auto">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"></path></svg>
+          <span>Start New Search</span>
+        </button>
       </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div class="p-6 rounded-3xl glass-panel">
-          <div class="text-xs font-medium text-neutral-400">Total Leads Collected</div>
+          <div class="text-xs font-medium text-neutral-400">Total Leads Saved</div>
           <div id="stat-total-leads" class="text-3xl font-black text-white mt-2 tracking-tight">0</div>
-          <div class="text-[11px] text-neutral-500 mt-1">Saved to your exports folder</div>
+          <div class="text-[11px] text-neutral-500 mt-1">Verified direct business contacts</div>
         </div>
         <div class="p-6 rounded-3xl glass-panel">
-          <div class="text-xs font-medium text-neutral-400">Total Searches Run</div>
-          <div id="stat-total-queries" class="text-3xl font-black text-white mt-2 tracking-tight">0</div>
-          <div class="text-[11px] text-neutral-500 mt-1">Recorded in search history</div>
+          <div class="text-xs font-medium text-neutral-400">Search Tasks Completed</div>
+          <div id="stat-total-tasks" class="text-3xl font-black text-white mt-2 tracking-tight">0</div>
+          <div class="text-[11px] text-neutral-500 mt-1">Recorded in your local storage</div>
         </div>
         <div class="p-6 rounded-3xl glass-panel">
-          <div class="text-xs font-medium text-neutral-400">Current Status</div>
-          <div id="stat-system-status" class="text-xl font-bold text-white mt-2">Ready</div>
-          <div class="text-[11px] text-neutral-500 mt-1">Waiting for search command</div>
+          <div class="text-xs font-medium text-neutral-400">Search Engine Engine Status</div>
+          <div class="text-xl font-bold text-white mt-2 flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+            <span>Ready</span>
+          </div>
+          <div class="text-[11px] text-neutral-500 mt-1">Standby for queries</div>
         </div>
       </div>
 
       <div class="space-y-4">
         <div class="flex items-center justify-between">
-          <h2 class="text-sm font-bold text-white">Recent Searches</h2>
+          <h2 class="text-sm font-bold text-white">Recent Tasks</h2>
           <button onclick="navigate('history')" class="text-xs text-neutral-400 hover:text-white font-medium">View all</button>
         </div>
-        <div id="dashboard-recent-list" class="space-y-2.5">
-          <div class="p-6 rounded-2xl glass-card text-center text-xs text-neutral-500">
-            No searches yet. Click "New Search" to get started.
+        <div id="dashboard-recent-list" class="space-y-3">
+          <div class="p-8 rounded-2xl glass-card text-center text-xs text-neutral-500">
+            No searches yet. Click "Start New Search" to begin.
           </div>
         </div>
       </div>
     </div>
 
-    <div id="page-search" class="hidden space-y-8">
+    <div id="page-search-flow" class="hidden space-y-8 max-w-3xl">
       <div>
-        <h1 class="text-2xl font-extrabold tracking-tight text-white">Start New Search</h1>
-        <p class="text-xs text-neutral-400 mt-1">Choose where you want to find verified contacts.</p>
+        <h1 class="text-3xl font-extrabold tracking-tight text-white">Start New Search</h1>
+        <p class="text-xs text-neutral-400 mt-1">Configure your search target, review keywords, and initiate extraction.</p>
       </div>
 
-      <div class="grid grid-cols-2 gap-3 max-w-md">
-        <button id="tab-src-gmaps" onclick="selectSearchSource('gmaps')" class="p-4 rounded-2xl bg-white text-black font-bold text-xs transition-all text-center">
-          Google Maps
-        </button>
-        <button id="tab-src-twogis" onclick="selectSearchSource('twogis')" class="p-4 rounded-2xl glass-card text-neutral-400 hover:text-white font-bold text-xs transition-all text-center">
-          2GIS
-        </button>
+      <div class="space-y-3">
+        <label class="block text-xs font-bold text-neutral-300 uppercase tracking-wider">1. Choose Search Source</label>
+        <div class="grid grid-cols-2 gap-3 max-w-md">
+          <button id="src-btn-gmaps" onclick="setSearchSource('gmaps')" class="p-4 rounded-2xl bg-white text-black font-bold text-xs transition-all text-center border border-white">
+            Google Maps
+          </button>
+          <button id="src-btn-twogis" onclick="setSearchSource('twogis')" class="p-4 rounded-2xl glass-card text-neutral-400 hover:text-white font-bold text-xs transition-all text-center">
+            2GIS
+          </button>
+        </div>
       </div>
 
-      <div id="form-gmaps" class="space-y-6 max-w-2xl">
-        <div class="space-y-2">
-          <label class="block text-xs font-bold text-neutral-300">Search Keywords, Maps URL, or Batch File</label>
-          <div class="flex gap-2">
-            <input id="input-gmaps-query" type="text" placeholder="e.g. accounting companies in Dubai" class="flex-1 px-4 py-3.5 bg-neutral-900 border border-neutral-800 rounded-xl text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-white transition-all"/>
-            <button onclick="pickBatchFile()" class="px-5 py-3.5 bg-neutral-800 hover:bg-neutral-700 text-white font-semibold text-xs rounded-xl transition-all shrink-0">
-              Upload File
+      <div id="wrapper-twogis-city" class="hidden space-y-2 max-w-md">
+        <label class="block text-xs font-bold text-neutral-300 uppercase tracking-wider">City</label>
+        <input id="input-twogis-city" type="text" value="Dubai" class="w-full px-4 py-3.5 bg-neutral-900 border border-neutral-800 rounded-xl text-sm text-white focus:outline-none focus:border-white transition-all"/>
+      </div>
+
+      <div class="space-y-3">
+        <div class="flex items-center justify-between">
+          <label class="block text-xs font-bold text-neutral-300 uppercase tracking-wider">2. Keywords or Batch Input</label>
+          <button onclick="pickFileViaDialog()" class="text-xs text-neutral-300 hover:text-white font-semibold underline underline-offset-4">
+            Upload CSV / Excel
+          </button>
+        </div>
+
+        <div id="drop-zone" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)" class="p-6 rounded-2xl border-2 border-dashed border-neutral-800 bg-neutral-950 flex flex-col items-center justify-center text-center transition-all cursor-pointer" onclick="document.getElementById('manual-keyword-input').focus()">
+          <svg class="w-6 h-6 text-neutral-500 mb-2" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+          <div class="text-xs text-neutral-300 font-semibold">Drop CSV / Excel file here, or type below</div>
+          <div class="text-[11px] text-neutral-500 mt-0.5">One keyword per line, or uploaded spreadsheet column</div>
+        </div>
+
+        <textarea id="manual-keyword-input" rows="4" oninput="handleManualTextChange()" placeholder="e.g. Accounting companies in Dubai&#10;Real estate brokers in Business Bay&#10;Construction companies in Abu Dhabi" class="w-full px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-xl text-xs text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-white transition-all resize-y"></textarea>
+      </div>
+
+      <div id="review-keyword-card" class="hidden p-5 rounded-2xl glass-card space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <span id="review-keyword-count" class="text-xs font-bold text-white">0 searches loaded</span>
+            <span id="review-duplicates-badge" class="hidden ml-2 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">0 duplicates found</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <button id="btn-clean-duplicates" onclick="cleanDuplicates()" class="hidden px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-[11px] font-semibold text-neutral-300">
+              Remove Duplicates
+            </button>
+            <button onclick="clearAllKeywords()" class="px-3 py-1.5 rounded-lg hover:bg-white/5 text-[11px] font-semibold text-rose-400">
+              Clear All
             </button>
           </div>
-          <p class="text-[11px] text-neutral-500">
-            You can type a single keyword, paste a Google Maps link, or upload an Excel / CSV file with multiple queries.
-          </p>
         </div>
 
-        <div id="batch-preview-box" class="hidden p-4 rounded-2xl border border-white/10 bg-white/5 space-y-3">
-          <div class="flex items-center justify-between">
-            <span id="batch-count-label" class="text-xs font-bold text-white">0 searches loaded</span>
-            <button onclick="clearBatchFile()" class="text-[11px] text-rose-400 hover:text-rose-300 font-semibold">Remove File</button>
-          </div>
-          <div id="batch-preview-list" class="max-h-32 overflow-y-auto space-y-1 pr-2 text-xs text-neutral-300"></div>
-        </div>
-
-        <div class="space-y-2">
-          <label class="block text-xs font-bold text-neutral-300">Maximum leads to collect (0 for unlimited)</label>
-          <input id="input-gmaps-cap" type="number" value="100" min="0" class="w-48 px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-xl text-sm text-white focus:outline-none focus:border-white transition-all"/>
-        </div>
-
-        <button onclick="startGmapsWorkflow()" class="w-full sm:w-auto px-8 py-4 bg-white hover:bg-neutral-200 active:bg-neutral-300 text-black font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-lg">
-          Start Search
-        </button>
+        <div id="keyword-pills-container" class="max-h-40 overflow-y-auto flex flex-wrap gap-2 pr-1"></div>
       </div>
 
-      <div id="form-twogis" class="hidden space-y-6 max-w-2xl">
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div class="space-y-2">
-            <label class="block text-xs font-bold text-neutral-300">City</label>
-            <input id="input-twogis-city" type="text" value="Dubai" class="w-full px-4 py-3.5 bg-neutral-900 border border-neutral-800 rounded-xl text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-white transition-all"/>
-          </div>
-          <div class="space-y-2">
-            <label class="block text-xs font-bold text-neutral-300">What are you looking for?</label>
-            <input id="input-twogis-query" type="text" placeholder="e.g. Accounting" class="w-full px-4 py-3.5 bg-neutral-900 border border-neutral-800 rounded-xl text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-white transition-all"/>
-          </div>
+      <div class="space-y-2 max-w-xs">
+        <label class="block text-xs font-bold text-neutral-300 uppercase tracking-wider">3. Maximum leads per search</label>
+        <div class="flex items-center gap-2">
+          <input id="input-lead-cap" type="number" value="100" min="0" class="w-36 px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-xl text-sm font-semibold text-white focus:outline-none focus:border-white transition-all"/>
+          <span class="text-xs text-neutral-500">0 for unlimited</span>
         </div>
+      </div>
 
-        <div class="space-y-2">
-          <label class="block text-xs font-bold text-neutral-300">Maximum leads to collect (0 for unlimited)</label>
-          <input id="input-twogis-cap" type="number" value="100" min="0" class="w-48 px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-xl text-sm text-white focus:outline-none focus:border-white transition-all"/>
-        </div>
-
-        <button onclick="startTwoGisWorkflow()" class="w-full sm:w-auto px-8 py-4 bg-white hover:bg-neutral-200 active:bg-neutral-300 text-black font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-lg">
-          Start Search
+      <div class="pt-4 flex items-center gap-3">
+        <button id="btn-start-search" onclick="initiateSearchTask()" class="px-8 py-4 bg-white hover:bg-neutral-200 active:bg-neutral-300 text-black font-bold text-xs uppercase tracking-wider rounded-2xl transition-all shadow-lg flex items-center gap-2">
+          <span>Start Search</span>
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"></path></svg>
+        </button>
+        <button onclick="navigate('dashboard')" class="px-5 py-4 text-xs font-bold text-neutral-400 hover:text-white transition-colors">
+          Cancel
         </button>
       </div>
     </div>
 
-    <div id="page-progress" class="hidden space-y-6 max-w-3xl">
+    <div id="page-live-progress" class="hidden space-y-6 max-w-3xl">
       <div>
         <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-white text-xs font-bold mb-3">
           <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-          <span>Finding leads</span>
+          <span id="live-progress-badge">Searching Active</span>
         </div>
-        <h1 id="progress-query-title" class="text-2xl font-extrabold text-white tracking-tight">Searching...</h1>
-        <p id="progress-query-counter" class="text-xs text-neutral-400 mt-1">Search 1 of 1</p>
+        <h1 id="live-current-keyword" class="text-2xl font-extrabold text-white tracking-tight truncate">Preparing search...</h1>
+        <p id="live-query-count" class="text-xs text-neutral-400 mt-1">Search 1 of 1</p>
       </div>
 
       <div class="p-8 rounded-3xl glass-panel space-y-6">
         <div class="flex items-end justify-between">
           <div>
-            <div class="text-xs text-neutral-400 font-medium">Verified Contacts Collected</div>
-            <div id="progress-lead-count" class="text-4xl font-black text-white mt-1">0</div>
+            <div class="text-xs text-neutral-400 font-medium">Verified Leads Saved</div>
+            <div id="live-leads-saved" class="text-4xl font-black text-white mt-1">0</div>
           </div>
-          <div id="progress-percent-label" class="text-sm font-bold text-neutral-400">0%</div>
+          <div id="live-percent-label" class="text-sm font-bold text-neutral-400">0%</div>
         </div>
 
         <div class="w-full h-2.5 bg-neutral-800 rounded-full overflow-hidden">
-          <div id="progress-bar-fill" class="h-full bg-white transition-all duration-300" style="width: 0%"></div>
+          <div id="live-progress-fill" class="h-full bg-white transition-all duration-300" style="width: 0%"></div>
+        </div>
+
+        <div class="p-4 rounded-xl glass-card flex items-center justify-between text-xs text-neutral-300">
+          <span class="font-medium">Automatic Checkpoint</span>
+          <span class="text-neutral-500 font-mono text-[11px]">Syncing to local session</span>
         </div>
 
         <div class="flex items-center justify-between pt-2">
-          <button onclick="stopSearch()" class="px-5 py-2.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 font-bold text-xs transition-all">
-            Stop
+          <button onclick="confirmStopTask()" class="px-6 py-2.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 font-bold text-xs transition-all">
+            Stop Search
           </button>
-          <button onclick="toggleDetailsDrawer()" class="text-xs text-neutral-400 hover:text-white font-semibold">
-            View Details
+          <button onclick="toggleDetailsSection()" class="text-xs text-neutral-400 hover:text-white font-semibold">
+            Details & Logs
           </button>
         </div>
       </div>
 
-      <div id="progress-details-drawer" class="hidden p-5 rounded-2xl glass-card space-y-3">
-        <div class="text-xs font-bold text-neutral-300">Live Activity</div>
-        <div id="progress-log-stream" class="h-44 overflow-y-auto font-mono text-[11px] text-neutral-400 leading-relaxed space-y-1"></div>
+      <div id="live-details-box" class="hidden p-5 rounded-2xl glass-card space-y-3">
+        <div class="text-xs font-bold text-neutral-300">Execution Log</div>
+        <div id="live-log-container" class="h-44 overflow-y-auto font-mono text-[11px] text-neutral-400 leading-relaxed space-y-1"></div>
       </div>
     </div>
 
@@ -333,33 +344,33 @@ body {
           <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold mb-3 border border-emerald-500/30">
             ✓ Done
           </span>
-          <h1 id="finished-headline" class="text-3xl font-extrabold text-white tracking-tight">Search Completed</h1>
-          <p id="finished-subline" class="text-xs text-neutral-400 mt-1">All collected leads have been safely exported to your CSV.</p>
+          <h1 id="finished-title" class="text-3xl font-extrabold text-white tracking-tight">Search Completed</h1>
+          <p id="finished-desc" class="text-xs text-neutral-400 mt-1">Leads collected and recorded into a dedicated CSV file.</p>
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div class="p-4 rounded-2xl glass-card">
             <div class="text-[11px] text-neutral-400 font-medium">Leads Collected</div>
-            <div id="finished-stat-leads" class="text-2xl font-extrabold text-white mt-1">0</div>
+            <div id="finished-leads-count" class="text-2xl font-extrabold text-white mt-1">0</div>
           </div>
           <div class="p-4 rounded-2xl glass-card">
             <div class="text-[11px] text-neutral-400 font-medium">Searches Completed</div>
-            <div id="finished-stat-searches" class="text-2xl font-extrabold text-white mt-1">0</div>
+            <div id="finished-searches-count" class="text-2xl font-extrabold text-white mt-1">0</div>
           </div>
           <div class="p-4 rounded-2xl glass-card">
-            <div class="text-[11px] text-neutral-400 font-medium">Without Direct Phone</div>
-            <div id="finished-stat-nophone" class="text-2xl font-extrabold text-white mt-1">0</div>
+            <div class="text-[11px] text-neutral-400 font-medium">Skipped (No Direct Phone)</div>
+            <div id="finished-nophone-count" class="text-2xl font-extrabold text-white mt-1">0</div>
           </div>
         </div>
 
         <div class="flex flex-wrap items-center gap-3 pt-2">
-          <button id="btn-open-results" class="px-6 py-3.5 bg-white hover:bg-neutral-200 text-black font-bold text-xs rounded-xl transition-all shadow-md">
+          <button id="btn-finished-open-csv" class="px-6 py-3.5 bg-white hover:bg-neutral-200 text-black font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md">
             Open Results
           </button>
-          <button id="btn-open-folder" class="px-5 py-3.5 bg-neutral-800 hover:bg-neutral-700 text-white font-semibold text-xs rounded-xl transition-all">
+          <button id="btn-finished-open-folder" class="px-5 py-3.5 bg-neutral-800 hover:bg-neutral-700 text-white font-semibold text-xs rounded-xl transition-all">
             Open Folder
           </button>
-          <button onclick="navigate('search')" class="px-5 py-3.5 glass-card text-neutral-300 hover:text-white font-semibold text-xs rounded-xl transition-all">
+          <button onclick="openNewSearchFlow()" class="px-5 py-3.5 glass-card text-neutral-300 hover:text-white font-semibold text-xs rounded-xl transition-all">
             Run Another Search
           </button>
           <button onclick="navigate('history')" class="px-5 py-3.5 text-neutral-400 hover:text-white font-semibold text-xs transition-all">
@@ -369,9 +380,13 @@ body {
       </div>
 
       <div class="space-y-3">
-        <h2 class="text-sm font-bold text-white">Results Preview</h2>
+        <div class="flex items-center justify-between">
+          <h2 class="text-sm font-bold text-white">Results Preview</h2>
+          <span class="text-[11px] text-neutral-500 font-medium">First 25 verified records</span>
+        </div>
+
         <div class="rounded-2xl glass-card overflow-hidden border border-white/5">
-          <div class="overflow-x-auto max-h-72">
+          <div class="overflow-x-auto max-h-80">
             <table class="w-full text-left text-xs border-collapse">
               <thead class="bg-white/5 text-neutral-400 uppercase text-[10px] tracking-wider sticky top-0 backdrop-blur-md">
                 <tr>
@@ -382,7 +397,7 @@ body {
                   <th class="p-3">Address</th>
                 </tr>
               </thead>
-              <tbody id="finished-preview-table" class="divide-y divide-white/5 text-neutral-300">
+              <tbody id="finished-preview-body" class="divide-y divide-white/5 text-neutral-300">
                 <tr>
                   <td colspan="5" class="p-4 text-center text-neutral-500">Loading preview...</td>
                 </tr>
@@ -396,424 +411,6 @@ body {
     <div id="page-history" class="hidden space-y-6">
       <div class="flex items-center justify-between">
         <div>
-          <h1 class="text-2xl font-extrabold tracking-tight text-white">Search History</h1>
-          <p class="text-xs text-neutral-400 mt-1">Review saved results or pick up paused searches.</p>
+          <h1 class="text-3xl font-extrabold tracking-tight text-white">History</h1>
+          <p class="text-xs text-neutral-400 mt-1">Review saved records, resume interrupted searches, or open CSV files.</p>
         </div>
-        <button onclick="window.api.showInFolder()" class="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white font-semibold text-xs rounded-xl transition-all">
-          Open Folder
-        </button>
-      </div>
-
-      <div id="history-container" class="space-y-3">
-        <div class="p-8 rounded-2xl glass-card text-center text-xs text-neutral-500">
-          Loading history...
-        </div>
-      </div>
-    </div>
-
-  </main>
-</div>
-
-<script>
-let currentActiveView = 'dashboard';
-let currentSearchSource = 'gmaps';
-let uploadedBatchQueries = [];
-let activeTaskCsvPath = '';
-let activeCheckpointData = null;
-
-function navigate(viewName) {
-  currentActiveView = viewName;
-  const pages = ['dashboard', 'search', 'progress', 'finished', 'history'];
-
-  pages.forEach(p => {
-    const el = document.getElementById('page-' + p);
-    if (el) el.classList.add('hidden');
-    const navBtn = document.getElementById('nav-' + p);
-    if (navBtn) {
-      navBtn.className = 'w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-neutral-400 hover:text-white hover:bg-white/5 font-semibold text-xs transition-all text-left';
-    }
-  });
-
-  const activePage = document.getElementById('page-' + viewName);
-  if (activePage) activePage.classList.remove('hidden');
-
-  const activeNav = document.getElementById('nav-' + viewName);
-  if (activeNav) {
-    activeNav.className = 'w-full flex items-center gap-3 px-3.5 py-3 rounded-xl bg-white text-black font-bold text-xs transition-all text-left';
-  }
-
-  if (viewName === 'dashboard') refreshDashboard();
-  if (viewName === 'history') refreshHistory();
-}
-
-function selectSearchSource(source) {
-  currentSearchSource = source;
-  const gmTab = document.getElementById('tab-src-gmaps');
-  const tgTab = document.getElementById('tab-src-twogis');
-  const gmForm = document.getElementById('form-gmaps');
-  const tgForm = document.getElementById('form-twogis');
-
-  if (source === 'gmaps') {
-    gmTab.className = 'p-4 rounded-2xl bg-white text-black font-bold text-xs transition-all text-center';
-    tgTab.className = 'p-4 rounded-2xl glass-card text-neutral-400 hover:text-white font-bold text-xs transition-all text-center';
-    gmForm.classList.remove('hidden');
-    tgForm.classList.add('hidden');
-  } else {
-    tgTab.className = 'p-4 rounded-2xl bg-white text-black font-bold text-xs transition-all text-center';
-    gmTab.className = 'p-4 rounded-2xl glass-card text-neutral-400 hover:text-white font-bold text-xs transition-all text-center';
-    tgForm.classList.remove('hidden');
-    gmForm.classList.add('hidden');
-  }
-}
-
-async function pickBatchFile() {
-  const result = await window.api.pickBatchFile();
-  if (!result || !result.queries || result.queries.length === 0) return;
-
-  uploadedBatchQueries = result.queries;
-  document.getElementById('input-gmaps-query').value = result.path;
-
-  const box = document.getElementById('batch-preview-box');
-  const label = document.getElementById('batch-count-label');
-  const list = document.getElementById('batch-preview-list');
-
-  label.innerText = `${result.queries.length} searches loaded from ${result.name}`;
-  list.innerHTML = result.queries.map((q, idx) => `<div class="truncate text-neutral-300"><span class="text-neutral-500 font-mono text-[10px] mr-2">${idx + 1}.</span>${q}</div>`).join('');
-  box.classList.remove('hidden');
-}
-
-function clearBatchFile() {
-  uploadedBatchQueries = [];
-  document.getElementById('input-gmaps-query').value = '';
-  document.getElementById('batch-preview-box').classList.add('hidden');
-}
-
-async function startGmapsWorkflow() {
-  const queryInput = document.getElementById('input-gmaps-query').value.trim();
-  const cap = parseInt(document.getElementById('input-gmaps-cap').value, 10) || 0;
-  if (!queryInput && uploadedBatchQueries.length === 0) return;
-
-  navigate('progress');
-  document.getElementById('progress-query-title').innerText = uploadedBatchQueries.length > 0 ? uploadedBatchQueries[0] : queryInput;
-  document.getElementById('progress-query-counter').innerText = uploadedBatchQueries.length > 1 ? `Search 1 of ${uploadedBatchQueries.length}` : 'Search 1 of 1';
-  document.getElementById('progress-lead-count').innerText = '0';
-  document.getElementById('progress-bar-fill').style.width = '0%';
-  document.getElementById('progress-percent-label').innerText = '0%';
-  document.getElementById('progress-log-stream').innerHTML = '';
-
-  await window.api.startGmaps({
-    target: queryInput,
-    cap
-  });
-}
-
-async function startTwoGisWorkflow() {
-  const city = document.getElementById('input-twogis-city').value.trim();
-  const query = document.getElementById('input-twogis-query').value.trim();
-  const cap = parseInt(document.getElementById('input-twogis-cap').value, 10) || 0;
-  if (!city || !query) return;
-
-  navigate('progress');
-  document.getElementById('progress-query-title').innerText = `${query} in ${city}`;
-  document.getElementById('progress-query-counter').innerText = '2GIS Directory';
-  document.getElementById('progress-lead-count').innerText = '0';
-  document.getElementById('progress-bar-fill').style.width = '0%';
-  document.getElementById('progress-percent-label').innerText = '0%';
-  document.getElementById('progress-log-stream').innerHTML = '';
-
-  await window.api.startTwoGis({
-    city,
-    query,
-    cap
-  });
-}
-
-async function resumeTask(item) {
-  if (!item) return;
-
-  navigate('progress');
-  document.getElementById('progress-lead-count').innerText = (item.totalSaved || 0).toLocaleString();
-  document.getElementById('progress-log-stream').innerHTML = '';
-
-  if (item.engine === 'gmaps') {
-    document.getElementById('progress-query-title').innerText = item.label || item.target;
-    document.getElementById('progress-query-counter').innerText = `Search ${(item.currentQueryIdx || 0) + 1} of ${item.totalQueries || 1}`;
-    await window.api.startGmaps({
-      target: item.target,
-      cap: (item.config && item.config.cap) || 0,
-      startIdx: item.currentQueryIdx || 0,
-      initialSaved: item.totalSaved || 0,
-      existingCsvPath: item.csvPath,
-      taskId: item.id
-    });
-  } else {
-    const parts = (item.target || '').split(':');
-    const city = parts[0] ? parts[0].trim() : 'Dubai';
-    const query = parts[1] ? parts[1].trim() : '';
-    document.getElementById('progress-query-title').innerText = item.label || item.target;
-    document.getElementById('progress-query-counter').innerText = '2GIS Directory';
-    await window.api.startTwoGis({
-      city: (item.config && item.config.city) || city,
-      query: (item.config && item.config.query) || query,
-      cap: (item.config && item.config.cap) || 0,
-      startPage: item.currentQueryIdx || 1,
-      initialSaved: item.totalSaved || 0,
-      existingCsvPath: item.csvPath,
-      taskId: item.id
-    });
-  }
-}
-
-async function stopSearch() {
-  await window.api.stopScraper();
-}
-
-function toggleDetailsDrawer() {
-  const drawer = document.getElementById('progress-details-drawer');
-  drawer.classList.toggle('hidden');
-}
-
-async function dismissCheckpoint() {
-  await window.api.dismissCheckpoint();
-  document.getElementById('checkpoint-banner').classList.add('hidden');
-  activeCheckpointData = null;
-}
-
-async function refreshDashboard() {
-  const history = await window.api.getHistory();
-  const cp = await window.api.getActiveCheckpoint();
-
-  if (cp && cp.target) {
-    activeCheckpointData = cp;
-    document.getElementById('checkpoint-desc').innerText = `Continue ${cp.engine === 'gmaps' ? 'Google Maps' : '2GIS'} search: ${cp.label || cp.target} (${cp.totalSaved || 0} leads saved)`;
-    document.getElementById('checkpoint-resume-btn').onclick = () => resumeTask(cp);
-    document.getElementById('checkpoint-banner').classList.remove('hidden');
-  } else {
-    document.getElementById('checkpoint-banner').classList.add('hidden');
-  }
-
-  const welcomeBanner = document.getElementById('section-welcome');
-  if (!history || history.length === 0) {
-    if (welcomeBanner) welcomeBanner.classList.remove('hidden');
-  } else {
-    if (welcomeBanner) welcomeBanner.classList.add('hidden');
-  }
-
-  const totalLeads = (history || []).reduce((acc, curr) => acc + (curr.totalSaved || 0), 0);
-  const totalQueries = (history || []).reduce((acc, curr) => acc + (curr.totalQueries || 1), 0);
-
-  document.getElementById('stat-total-leads').innerText = totalLeads.toLocaleString();
-  document.getElementById('stat-total-queries').innerText = totalQueries.toLocaleString();
-
-  const recentList = document.getElementById('dashboard-recent-list');
-  const recentItems = (history || []).slice(0, 4);
-
-  if (recentItems.length === 0) {
-    recentList.innerHTML = `
-      <div class="p-8 rounded-3xl glass-card text-center space-y-3">
-        <div class="text-sm font-bold text-white">No searches yet</div>
-        <div class="text-xs text-neutral-400 max-w-sm mx-auto">Start a Google Maps or 2GIS search to build your first verified lead list.</div>
-        <button onclick="navigate('search')" class="px-5 py-2.5 bg-white hover:bg-neutral-200 text-black font-bold text-xs rounded-xl transition-all">Start Search</button>
-      </div>
-    `;
-    return;
-  }
-
-  recentList.innerHTML = recentItems.map((item) => renderHistoryCard(item)).join('');
-}
-
-async function refreshHistory() {
-  const container = document.getElementById('history-container');
-  const history = await window.api.getHistory();
-
-  if (!history || history.length === 0) {
-    container.innerHTML = `
-      <div class="p-12 rounded-3xl glass-card text-center space-y-3">
-        <div class="text-sm font-bold text-white">No searches yet</div>
-        <div class="text-xs text-neutral-400 max-w-md mx-auto">Start a Google Maps or 2GIS search to see your results and export history here.</div>
-        <button onclick="navigate('search')" class="px-5 py-2.5 bg-white hover:bg-neutral-200 text-black font-bold text-xs rounded-xl transition-all">Start Search</button>
-      </div>
-    `;
-    return;
-  }
-
-  container.innerHTML = history.map((item) => renderHistoryCard(item)).join('');
-}
-
-function renderHistoryCard(item) {
-  const isPaused = item.status === 'paused';
-  const badgeClass = isPaused ? 'bg-amber-400/10 text-amber-300 border-amber-400/20' : 'bg-white/10 text-neutral-300 border-white/10';
-  const badgeText = isPaused ? `Paused (${item.currentQueryIdx || 1}/${item.totalQueries || 1})` : 'Completed';
-  const sourceName = item.engine === 'gmaps' ? 'Google Maps' : '2GIS';
-  const safeJson = encodeURIComponent(JSON.stringify(item));
-
-  return `
-    <div class="p-5 rounded-2xl glass-card flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-      <div class="space-y-1 min-w-0">
-        <div class="flex items-center gap-2">
-          <span class="text-[10px] font-extrabold uppercase tracking-wider text-neutral-400">${sourceName}</span>
-          <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold border ${badgeClass}">${badgeText}</span>
-        </div>
-        <div class="text-sm font-bold text-white truncate max-w-md">${item.label || item.target}</div>
-        <div class="text-xs text-neutral-400">
-          <b class="text-white">${(item.totalSaved || 0).toLocaleString()}</b> leads collected
-          ${item.totalQueries > 1 ? `· ${item.totalQueries} searches` : ''}
-        </div>
-      </div>
-      <div class="flex items-center gap-2 shrink-0">
-        ${isPaused ? `<button onclick="handleHistoryResume('${safeJson}')" class="px-4 py-2 bg-white hover:bg-neutral-200 text-black font-bold text-xs rounded-xl transition-all">Resume</button>` : ''}
-        ${item.csvPath ? `<button onclick="window.api.openPath('${item.csvPath.replace(/\\/g, '\\\\')}')" class="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white font-semibold text-xs rounded-xl transition-all">Open Results</button>` : ''}
-        <button onclick="window.api.showInFolder('${(item.csvPath || '').replace(/\\/g, '\\\\')}')" class="p-2 text-neutral-400 hover:text-white" title="Show in folder">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z"></path></svg>
-        </button>
-      </div>
-    </div>
-  `;
-}
-
-function handleHistoryResume(encodedItem) {
-  try {
-    const item = JSON.parse(decodeURIComponent(encodedItem));
-    resumeTask(item);
-  } catch {}
-}
-
-async function renderFinishedView(summary) {
-  navigate('finished');
-  activeTaskCsvPath = summary.csvPath || '';
-
-  document.getElementById('finished-stat-leads').innerText = (summary.totalSaved || 0).toLocaleString();
-  document.getElementById('finished-stat-searches').innerText = (summary.completedQueries || 1).toString();
-  document.getElementById('finished-stat-nophone').innerText = (summary.noPhoneCount || 0).toString();
-
-  document.getElementById('btn-open-results').onclick = () => window.api.openPath(summary.csvPath);
-  document.getElementById('btn-open-folder').onclick = () => window.api.showInFolder(summary.csvPath);
-
-  const tableBody = document.getElementById('finished-preview-table');
-  tableBody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-neutral-500">Loading preview...</td></tr>';
-
-  if (summary.csvPath) {
-    const rows = await window.api.previewResults(summary.csvPath);
-    if (rows && rows.length > 0) {
-      tableBody.innerHTML = rows.map((r) => `
-        <tr class="hover:bg-white/5 transition-colors">
-          <td class="p-3 font-semibold text-white truncate max-w-[200px]">${r['Business Name'] || 'Unknown'}</td>
-          <td class="p-3 text-neutral-300 font-mono text-xs">${r['Phone'] || 'None'}</td>
-          <td class="p-3 text-neutral-400 truncate max-w-[160px]">${r['Website'] || 'None'}</td>
-          <td class="p-3 text-neutral-400">${r['Category'] || 'Business'}</td>
-          <td class="p-3 text-neutral-500 truncate max-w-[220px]">${r['Address'] || 'None'}</td>
-        </tr>
-      `).join('');
-    } else {
-      tableBody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-neutral-500">No leads recorded yet.</td></tr>';
-    }
-  }
-}
-
-async function submitAuth() {
-  const input = document.getElementById('auth-key-input');
-  const errorBox = document.getElementById('auth-error');
-  const btn = document.getElementById('auth-submit-btn');
-
-  const key = input.value.trim();
-  if (!key) return;
-
-  errorBox.innerText = '';
-  btn.disabled = true;
-  btn.innerText = 'Checking...';
-
-  const res = await window.api.verifyLicense(key);
-  btn.disabled = false;
-  btn.innerText = 'Continue';
-
-  if (res && res.passed) {
-    showDashboardView(res);
-  } else {
-    errorBox.innerText = (res && res.msg) ? res.msg : 'Invalid license key.';
-  }
-}
-
-function showDashboardView(userData) {
-  document.getElementById('view-auth').classList.add('hidden');
-  document.getElementById('view-app').classList.remove('hidden');
-
-  const expLabel = document.getElementById('license-expiry-label');
-  if (expLabel && userData) {
-    expLabel.innerText = userData.expires || 'Active Account';
-  }
-
-  navigate('dashboard');
-}
-
-function showAuthView() {
-  document.getElementById('view-app').classList.add('hidden');
-  document.getElementById('view-auth').classList.remove('hidden');
-}
-
-async function logout() {
-  await window.api.logoutLicense();
-  showAuthView();
-  document.getElementById('auth-key-input').value = '';
-}
-
-window.api.onProgress((data) => {
-  if (currentActiveView !== 'progress') {
-    navigate('progress');
-  }
-
-  if (data.currentQuery) {
-    document.getElementById('progress-query-title').innerText = data.currentQuery;
-  }
-  if (data.totalQueries) {
-    document.getElementById('progress-query-counter').innerText = `Search ${data.currentQueryIdx || 1} of ${data.totalQueries}`;
-  }
-  if (typeof data.totalSaved === 'number') {
-    document.getElementById('progress-lead-count').innerText = data.totalSaved.toLocaleString();
-  }
-  if (typeof data.percent === 'number') {
-    const p = Math.max(0, Math.min(100, data.percent));
-    document.getElementById('progress-bar-fill').style.width = `${p}%`;
-    document.getElementById('progress-percent-label').innerText = `${p}%`;
-  }
-});
-
-window.api.onLog((text) => {
-  const stream = document.getElementById('progress-log-stream');
-  if (stream) {
-    const line = document.createElement('div');
-    line.className = 'truncate';
-    line.innerText = text;
-    stream.appendChild(line);
-    stream.scrollTop = stream.scrollHeight;
-  }
-});
-
-window.api.onFinished((summary) => {
-  renderFinishedView(summary);
-});
-
-window.api.onError((msg) => {
-  const stream = document.getElementById('progress-log-stream');
-  if (stream) {
-    const line = document.createElement('div');
-    line.className = 'text-rose-400 font-bold';
-    line.innerText = `Error: ${msg}`;
-    stream.appendChild(line);
-  }
-});
-
-window.addEventListener('DOMContentLoaded', async () => {
-  try {
-    const saved = await window.api.checkSavedLicense();
-    if (saved && saved.passed) {
-      showDashboardView(saved);
-    } else {
-      showAuthView();
-    }
-  } catch {
-    showAuthView();
-  }
-});
-</script>
-</body>
-</html>
