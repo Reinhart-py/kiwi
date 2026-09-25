@@ -1,0 +1,36 @@
+name: Build Kiri Desktop App
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Project Dependencies
+        run: npm install
+
+      - name: Package Windows Installer
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run dist
+
+      - name: Upload Installer Setup
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kiri-Windows-Installer
+          path: release/Kiri Setup *.exe
