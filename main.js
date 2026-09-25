@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const { verifyKey, getSavedKey, saveKey, removeKey } = require('./src/license');
 const { getHistory, getActiveCheckpoint, clearActiveCheckpoint } = require('./src/storage');
 const { runGmaps } = require('./src/scraper-gmaps');
@@ -7,6 +8,14 @@ const { runTwoGis } = require('./src/scraper-2gis');
 
 let mainWindow = null;
 let activeTask = null;
+
+function resolveAppIcon() {
+  const pngPath = path.join(__dirname, 'images', 'logo.png');
+  const icoPath = path.join(__dirname, 'images', 'icon.ico');
+  if (fs.existsSync(pngPath)) return pngPath;
+  if (fs.existsSync(icoPath)) return icoPath;
+  return undefined;
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -16,7 +25,7 @@ function createWindow() {
     minHeight: 700,
     backgroundColor: '#061c12',
     autoHideMenuBar: true,
-    icon: path.join(__dirname, 'images', 'icon.ico'),
+    icon: resolveAppIcon(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
