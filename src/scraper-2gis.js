@@ -3,7 +3,8 @@ const fs = require('fs');
 const path = require('path');
 const createCsvWriter = require('csv-writer').createObjectCsvWriter;
 const {
-  getExportsDir,
+  generateUniqueCsvPath,
+  getExistingLeadKeys,
   saveHistoryItem,
   updateHistoryRecord,
   saveActiveCheckpoint,
@@ -42,16 +43,29 @@ function buildSearchUrl(city, query) {
 }
 
 async function runTwoGis(config, control, notifyProgress, notifyLog) {
-  const { city, query, cap = 0, startPage = 1, initialSaved = 0, taskId } = config;
-  const label = `${city}: ${query}`;
+  const city = (config.city || 'Dubai').trim();
+  const queries = Array.isArray(config.queries) && config.queries.length > 0
+    ? config.queries
+    : [config.query || 'Companies'];
 
-  const safeName = `${city}_${query}`.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 24);
-  const csvFileName = `2GIS_${safeName}.csv`;
+  const cap = Number(config.cap) || 0;
+  const initialSaved = Number(config.initialSaved) || 0;
+  let startIdx = Number(config.startIdx) || 0;
+
+  if (startIdx >= queries.length) {
+    startIdx = 0;
+  }
+
+  const primaryTitle = queries.length > 1
+    ? `${city}: ${queries[0]} (+${queries.length - 1} more)`
+    : `${city}: ${queries[0]}`;
+
   const csvPath = config.existingCsvPath && fs.existsSync(config.existingCsvPath)
     ? config.existingCsvPath
-    : path.join(getExportsDir(), csvFileName);
+    : generateUniqueCsvPath('2GIS', `${city}_${queries[0]}`);
 
   const fileExists = fs.existsSync(csvPath);
+  const existingLeadKeys = getExistingLeadKeys(csvPath);
 
   const csvWriter = createCsvWriter({
     path: csvPath,
@@ -70,29 +84,31 @@ async function runTwoGis(config, control, notifyProgress, notifyLog) {
     append: fileExists
   });
 
-  const recordId = taskId || `twogis_${Date.now()}`;
+  const taskId = config.taskId || `twogis_${Date.now()}`;
   saveHistoryItem({
-    id: recordId,
+    id: taskId,
     engine: '2gis',
-    target: label,
-    label,
-    totalQueries: 1,
-    currentQueryIdx: startPage,
+    title: primaryTitle,
+    queries,
+    totalQueries: queries.length,
+    completedQueries: startIdx,
+    currentQueryIdx: startIdx,
     totalSaved: initialSaved,
     status: 'running',
     csvPath,
-    config: { city, query, cap, startPage, initialSaved, csvPath }
+    cap,
+    config: { city, queries, cap, csvPath }
   });
 
-  notifyLog(`Searching 2GIS for ${query} in ${city}...`);
+  notifyLog(`Initialised 2GIS search across ${queries.length} queries in ${city}.`);
   notifyProgress({
     status: 'running',
-    engine: '2gis',
-    currentQuery: label,
-    currentQueryIdx: startPage,
-    totalQueries: 1,
+    engine: '2GIS',
+    currentQuery: `${queries[startIdx]} (${city})`,
+    currentQueryIdx: startIdx + 1,
+    totalQueries: queries.length,
     totalSaved: initialSaved,
-    percent: 10,
+    percent: Math.round((startIdx / queries.length) * 100),
     csvPath
   });
 
@@ -101,210 +117,233 @@ async function runTwoGis(config, control, notifyProgress, notifyLog) {
   const page = await context.newPage();
 
   let totalSaved = initialSaved;
-  let currentPage = Number(startPage) || 1;
   let noPhoneCount = 0;
-  const maxPages = 50;
+  let failedQueriesCount = 0;
 
   try {
-    const url = buildSearchUrl(city, query);
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 35000 });
-    await page.waitForTimeout(2500);
-
-    while (currentPage <= maxPages) {
+    for (let qIdx = startIdx; qIdx < queries.length; qIdx++) {
       if (control.cancelled) {
         notifyLog('Search paused by user.');
-        updateHistoryRecord(recordId, {
+        updateHistoryRecord(taskId, {
           status: 'paused',
-          currentQueryIdx: currentPage,
+          currentQueryIdx: qIdx,
+          completedQueries: qIdx,
           totalSaved,
-          noPhoneCount
+          noPhoneCount,
+          failedQueriesCount
         });
         saveActiveCheckpoint({
-          id: recordId,
+          id: taskId,
           engine: '2gis',
-          target: label,
-          label,
+          title: primaryTitle,
           city,
-          query,
-          currentQueryIdx: currentPage,
-          totalQueries: 1,
+          queries,
+          currentQueryIdx: qIdx,
+          completedQueries: qIdx,
+          totalQueries: queries.length,
           totalSaved,
           csvPath,
           cap
         });
         return {
           status: 'paused',
-          engine: '2gis',
+          engine: '2GIS',
+          title: primaryTitle,
           totalSaved,
-          completedQueries: 1,
-          totalQueries: 1,
+          completedQueries: qIdx,
+          totalQueries: queries.length,
           csvPath,
           noPhoneCount,
-          failedQueries: 0
+          failedQueriesCount
         };
       }
 
       if (cap > 0 && totalSaved >= cap) {
-        notifyLog(`Reached limit of ${cap} leads.`);
+        notifyLog(`Lead cap of ${cap} reached.`);
         break;
       }
 
-      const calculatedPercent = Math.min(95, Math.round((currentPage / (currentPage + 4)) * 100));
+      const currentQuery = queries[qIdx];
+      const progressPercent = Math.min(100, Math.round((qIdx / queries.length) * 100));
+
       notifyProgress({
         status: 'running',
-        engine: '2gis',
-        currentQuery: `${label} (Page ${currentPage})`,
-        currentQueryIdx: currentPage,
-        totalQueries: 1,
+        engine: '2GIS',
+        currentQuery: `${currentQuery} (${city})`,
+        currentQueryIdx: qIdx + 1,
+        totalQueries: queries.length,
         totalSaved,
-        percent: calculatedPercent,
+        percent: progressPercent,
         csvPath
       });
-      notifyLog(`Reading 2GIS page ${currentPage}...`);
+      notifyLog(`Searching 2GIS [${qIdx + 1}/${queries.length}]: ${currentQuery} in ${city}`);
 
-      for (let s = 0; s < 3; s++) {
-        try {
-          await page.evaluate(() => {
-            const containers = document.querySelectorAll('div._15gu4wr, div[class*="sidebar"]');
-            if (containers.length) {
-              containers[containers.length - 1].scrollTop += 700;
-            } else {
-              window.scrollBy(0, 700);
-            }
-          });
-          await page.waitForTimeout(250);
-        } catch {}
+      try {
+        const url = buildSearchUrl(city, currentQuery);
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 35000 });
+        await page.waitForTimeout(2500);
+      } catch {
+        failedQueriesCount++;
+        notifyLog(`Failed loading 2GIS search: ${currentQuery}`);
+        continue;
       }
 
-      const cardHandles = await page.$$('div._1kf6gff, div[class*="_1469e3a"], a[href*="/firm/"]');
+      let currentPage = 1;
+      const maxPagesPerQuery = 30;
 
-      if (cardHandles.length === 0) {
-        notifyLog('No further listings found.');
-        break;
-      }
-
-      for (const card of cardHandles) {
+      while (currentPage <= maxPagesPerQuery) {
         if (control.cancelled) break;
         if (cap > 0 && totalSaved >= cap) break;
 
-        try {
-          const rawText = await card.innerText();
-          const lines = rawText.split('\n').map((l) => l.trim()).filter(Boolean);
-          if (lines.length === 0) continue;
+        for (let s = 0; s < 3; s++) {
+          try {
+            await page.evaluate(() => {
+              const containers = document.querySelectorAll('div._15gu4wr, div[class*="sidebar"]');
+              if (containers.length) {
+                containers[containers.length - 1].scrollTop += 700;
+              } else {
+                window.scrollBy(0, 700);
+              }
+            });
+            await page.waitForTimeout(250);
+          } catch {}
+        }
 
-          const title = lines[0];
-          let address = 'None';
-          for (let l = 1; l < lines.length; l++) {
-            const lower = lines[l].toLowerCase();
-            if (lower.includes('street') || lower.includes('road') || lower.includes('tower') || lower.includes('building') || lower.includes('bay')) {
-              address = lines[l];
-              break;
-            }
-          }
+        const cardHandles = await page.$$('div._1kf6gff, div[class*="_1469e3a"], a[href*="/firm/"]');
+        if (cardHandles.length === 0) break;
 
-          await card.click();
-          await page.waitForTimeout(500);
+        for (const card of cardHandles) {
+          if (control.cancelled) break;
+          if (cap > 0 && totalSaved >= cap) break;
 
           try {
-            const showBtn = await page.$('span:has-text("Show phone"), button:has-text("phone"), button:has-text("Phone")');
-            if (showBtn) {
-              await showBtn.click();
-              await page.waitForTimeout(250);
+            const rawText = await card.innerText();
+            const lines = rawText.split('\n').map((l) => l.trim()).filter(Boolean);
+            if (lines.length === 0) continue;
+
+            const title = lines[0];
+            let address = 'None';
+            for (let l = 1; l < lines.length; l++) {
+              const lower = lines[l].toLowerCase();
+              if (lower.includes('street') || lower.includes('road') || lower.includes('tower') || lower.includes('building') || lower.includes('bay')) {
+                address = lines[l];
+                break;
+              }
             }
+
+            await card.click();
+            await page.waitForTimeout(500);
+
+            try {
+              const showBtn = await page.$('span:has-text("Show phone"), button:has-text("phone"), button:has-text("Phone")');
+              if (showBtn) {
+                await showBtn.click();
+                await page.waitForTimeout(250);
+              }
+            } catch {}
+
+            const phoneLinks = await page.$$('a[href^="tel:"]');
+            const foundPhones = [];
+            for (const pl of phoneLinks) {
+              const href = await pl.getAttribute('href');
+              if (href) {
+                const num = href.replace('tel:', '').trim();
+                if (num && !foundPhones.includes(num)) foundPhones.push(num);
+              }
+            }
+
+            let website = 'None';
+            const webLinks = await page.$$('a[href^="http"]');
+            for (const wl of webLinks) {
+              const href = await wl.getAttribute('href');
+              if (href && !href.includes('2gis') && !href.includes('google')) {
+                website = href;
+                break;
+              }
+            }
+
+            const category = lines.length > 1 ? lines[1] : 'Business';
+            const dedupeKey = `${title.toLowerCase()}::${foundPhones[0] || 'None'}`;
+
+            if (!existingLeadKeys.has(dedupeKey)) {
+              existingLeadKeys.add(dedupeKey);
+              if (foundPhones.length === 0) noPhoneCount++;
+
+              const record = {
+                title,
+                phone_1: foundPhones[0] || 'None',
+                phone_2: foundPhones[1] || 'None',
+                website,
+                category,
+                address,
+                query: `${city}: ${currentQuery}`,
+                rating: 'None',
+                reviews: 'None',
+                source: '2GIS'
+              };
+
+              await csvWriter.writeRecords([record]);
+              totalSaved++;
+
+              notifyProgress({
+                status: 'running',
+                engine: '2GIS',
+                currentQuery: `${currentQuery} (${city})`,
+                currentQueryIdx: qIdx + 1,
+                totalQueries: queries.length,
+                totalSaved,
+                percent: Math.min(100, Math.round(((qIdx + (currentPage / (currentPage + 4))) / queries.length) * 100)),
+                csvPath
+              });
+              notifyLog(`Lead captured: ${title}`);
+            }
+
+            await page.keyboard.press('Escape');
+            await page.waitForTimeout(150);
           } catch {}
+        }
 
-          const phoneLinks = await page.$$('a[href^="tel:"]');
-          const foundPhones = [];
-          for (const pl of phoneLinks) {
-            const href = await pl.getAttribute('href');
-            if (href) {
-              const num = href.replace('tel:', '').trim();
-              if (num && !foundPhones.includes(num)) foundPhones.push(num);
-            }
-          }
-
-          let website = 'None';
-          const webLinks = await page.$$('a[href^="http"]');
-          for (const wl of webLinks) {
-            const href = await wl.getAttribute('href');
-            if (href && !href.includes('2gis') && !href.includes('google')) {
-              website = href;
-              break;
-            }
-          }
-
-          const category = lines.length > 1 ? lines[1] : 'Business';
-          if (foundPhones.length === 0) noPhoneCount++;
-
-          const leadObj = {
-            title,
-            phone_1: foundPhones[0] || 'None',
-            phone_2: foundPhones[1] || 'None',
-            website,
-            category,
-            address,
-            query: label,
-            rating: 'None',
-            reviews: 'None',
-            source: '2GIS'
-          };
-
-          await csvWriter.writeRecords([leadObj]);
-          totalSaved++;
-
-          notifyProgress({
-            status: 'running',
-            engine: '2gis',
-            currentQuery: label,
-            currentQueryIdx: currentPage,
-            totalQueries: 1,
-            totalSaved,
-            latestLead: leadObj,
-            percent: calculatedPercent,
-            csvPath
-          });
-          notifyLog(`Found lead: ${title}`);
-
-          await page.keyboard.press('Escape');
-          await page.waitForTimeout(150);
-        } catch {}
+        const nextBtn = await page.$('div._5ocwns div:last-child, div[class*="pagination"] div:last-child');
+        if (nextBtn) {
+          await nextBtn.scrollIntoViewIfNeeded();
+          await nextBtn.click();
+          currentPage++;
+          await page.waitForTimeout(2200);
+        } else {
+          break;
+        }
       }
 
-      updateHistoryRecord(recordId, {
-        currentQueryIdx: currentPage,
+      updateHistoryRecord(taskId, {
+        currentQueryIdx: qIdx + 1,
+        completedQueries: qIdx + 1,
         totalSaved,
-        noPhoneCount
+        noPhoneCount,
+        failedQueriesCount
       });
-
-      const nextBtn = await page.$('div._5ocwns div:last-child, div[class*="pagination"] div:last-child');
-      if (nextBtn) {
-        await nextBtn.scrollIntoViewIfNeeded();
-        await nextBtn.click();
-        currentPage++;
-        await page.waitForTimeout(2200);
-      } else {
-        break;
-      }
     }
 
     clearActiveCheckpoint();
-    updateHistoryRecord(recordId, {
+    updateHistoryRecord(taskId, {
       status: 'completed',
-      currentQueryIdx: currentPage,
+      currentQueryIdx: queries.length,
+      completedQueries: queries.length,
       totalSaved,
-      noPhoneCount
+      noPhoneCount,
+      failedQueriesCount
     });
 
-    notifyLog(`Search completed. Total leads found: ${totalSaved}`);
+    notifyLog(`2GIS search task finished. Stored ${totalSaved} leads.`);
     return {
       status: 'completed',
-      engine: '2gis',
+      engine: '2GIS',
+      title: primaryTitle,
       totalSaved,
-      completedQueries: 1,
-      totalQueries: 1,
+      completedQueries: queries.length - failedQueriesCount,
+      totalQueries: queries.length,
       csvPath,
       noPhoneCount,
-      failedQueries: 0
+      failedQueriesCount
     };
   } finally {
     try {
