@@ -3,25 +3,13 @@ const fs = require('fs');
 const path = require('path');
 const createCsvWriter = require('csv-writer').createObjectCsvWriter;
 const {
-  getExportsDir,
+  generateUniqueCsvPath,
+  getExistingLeadKeys,
   saveHistoryItem,
   updateHistoryRecord,
   saveActiveCheckpoint,
-  clearActiveCheckpoint,
-  parseBatchFile
+  clearActiveCheckpoint
 } = require('./storage');
-
-function resolveQueryList(targetInput) {
-  const clean = targetInput.replace(/["']/g, '').trim();
-  if (fs.existsSync(clean) && fs.statSync(clean).isFile()) {
-    const list = parseBatchFile(clean);
-    return list.length ? list : [clean];
-  }
-  if (clean.includes('\n')) {
-    return clean.split('\n').map((l) => l.trim()).filter(Boolean);
-  }
-  return [clean];
-}
 
 async function getBrowser() {
   const launchOptions = {
@@ -174,21 +162,28 @@ async function executeSearch(page, query) {
 }
 
 async function runGmaps(config, control, notifyProgress, notifyLog) {
-  const { target, cap = 0, initialSaved = 0, taskId } = config;
-  const queries = resolveQueryList(target);
+  const queries = Array.isArray(config.queries) && config.queries.length > 0
+    ? config.queries
+    : [config.query || config.target];
+
+  const cap = Number(config.cap) || 0;
+  const initialSaved = Number(config.initialSaved) || 0;
   let startIdx = Number(config.startIdx) || 0;
 
   if (startIdx >= queries.length) {
     startIdx = 0;
   }
 
-  const fileSeed = (queries[0] || 'search').replace(/[^a-zA-Z0-9]/g, '_').substring(0, 24);
-  const csvFileName = `GoogleMaps_${fileSeed}_${queries.length > 1 ? `batch${queries.length}` : 'single'}.csv`;
+  const primaryTitle = queries.length > 1
+    ? `${queries[0]} (+${queries.length - 1} more)`
+    : queries[0];
+
   const csvPath = config.existingCsvPath && fs.existsSync(config.existingCsvPath)
     ? config.existingCsvPath
-    : path.join(getExportsDir(), csvFileName);
+    : generateUniqueCsvPath('GoogleMaps', queries[0]);
 
   const fileExists = fs.existsSync(csvPath);
+  const existingLeadKeys = getExistingLeadKeys(csvPath);
 
   const csvWriter = createCsvWriter({
     path: csvPath,
@@ -207,26 +202,28 @@ async function runGmaps(config, control, notifyProgress, notifyLog) {
     append: fileExists
   });
 
-  const recordId = taskId || `gmaps_${Date.now()}`;
+  const taskId = config.taskId || `gmaps_${Date.now()}`;
   saveHistoryItem({
-    id: recordId,
+    id: taskId,
     engine: 'gmaps',
-    target,
-    label: queries.length > 1 ? `${queries[0]} (+${queries.length - 1} more)` : queries[0],
+    title: primaryTitle,
+    queries,
     totalQueries: queries.length,
+    completedQueries: startIdx,
     currentQueryIdx: startIdx,
     totalSaved: initialSaved,
     status: 'running',
     csvPath,
-    config: { target, cap, startIdx, initialSaved, csvPath }
+    cap,
+    config: { queries, cap, csvPath }
   });
 
-  notifyLog(`Starting Google Maps search queue (${queries.length} searches)...`);
+  notifyLog(`Initialised Google Maps task with ${queries.length} search query items.`);
   notifyProgress({
     status: 'running',
-    engine: 'gmaps',
+    engine: 'Google Maps',
     currentQuery: queries[startIdx],
-    currentQueryIdx: startIdx,
+    currentQueryIdx: startIdx + 1,
     totalQueries: queries.length,
     totalSaved: initialSaved,
     percent: Math.round((startIdx / queries.length) * 100),
@@ -239,25 +236,27 @@ async function runGmaps(config, control, notifyProgress, notifyLog) {
 
   let totalSaved = initialSaved;
   let noPhoneCount = 0;
-  let failedQueries = 0;
+  let failedQueriesCount = 0;
 
   try {
     for (let i = startIdx; i < queries.length; i++) {
       if (control.cancelled) {
         notifyLog('Search paused by user.');
-        updateHistoryRecord(recordId, {
+        updateHistoryRecord(taskId, {
           status: 'paused',
           currentQueryIdx: i,
+          completedQueries: i,
           totalSaved,
           noPhoneCount,
-          failedCount: failedQueries
+          failedQueriesCount
         });
         saveActiveCheckpoint({
-          id: recordId,
+          id: taskId,
           engine: 'gmaps',
-          target,
-          label: queries[i],
+          title: primaryTitle,
+          queries,
           currentQueryIdx: i,
+          completedQueries: i,
           totalQueries: queries.length,
           totalSaved,
           csvPath,
@@ -265,62 +264,66 @@ async function runGmaps(config, control, notifyProgress, notifyLog) {
         });
         return {
           status: 'paused',
-          engine: 'gmaps',
+          engine: 'Google Maps',
+          title: primaryTitle,
           totalSaved,
           completedQueries: i,
           totalQueries: queries.length,
           csvPath,
           noPhoneCount,
-          failedQueries
+          failedQueriesCount
         };
       }
 
       if (cap > 0 && totalSaved >= cap) {
-        notifyLog(`Reached lead limit of ${cap}.`);
+        notifyLog(`Lead cap of ${cap} reached.`);
         break;
       }
 
-      const q = queries[i];
-      const progressPercent = Math.min(100, Math.round(((i) / queries.length) * 100));
+      const currentQuery = queries[i];
+      const progressPercent = Math.min(100, Math.round((i / queries.length) * 100));
 
       notifyProgress({
         status: 'running',
-        engine: 'gmaps',
-        currentQuery: q,
+        engine: 'Google Maps',
+        currentQuery,
         currentQueryIdx: i + 1,
         totalQueries: queries.length,
         totalSaved,
         percent: progressPercent,
         csvPath
       });
-      notifyLog(`Searching ${i + 1} of ${queries.length}: ${q}`);
+      notifyLog(`Running search ${i + 1} of ${queries.length}: "${currentQuery}"`);
 
       try {
-        await executeSearch(page, q);
-      } catch (navErr) {
-        failedQueries++;
-        notifyLog(`Could not load search: ${q}. Skipping.`);
+        await executeSearch(page, currentQuery);
+      } catch {
+        failedQueriesCount++;
+        notifyLog(`Search query failed to load: ${currentQuery}`);
         continue;
       }
 
       if (page.url().includes('/maps/place/')) {
         const details = await extractActivePane(page);
         if (details.title && details.title !== 'Unknown') {
-          if (details.phone_1 === 'None') noPhoneCount++;
-          await csvWriter.writeRecords([{ ...details, query: q, source: 'Google Maps' }]);
-          totalSaved++;
-          notifyProgress({
-            status: 'running',
-            engine: 'gmaps',
-            currentQuery: q,
-            currentQueryIdx: i + 1,
-            totalQueries: queries.length,
-            totalSaved,
-            latestLead: details,
-            percent: Math.min(100, Math.round(((i + 1) / queries.length) * 100)),
-            csvPath
-          });
-          notifyLog(`Found lead: ${details.title}`);
+          const dedupeKey = `${details.title.toLowerCase()}::${details.phone_1}`;
+          if (!existingLeadKeys.has(dedupeKey)) {
+            existingLeadKeys.add(dedupeKey);
+            if (details.phone_1 === 'None') noPhoneCount++;
+            await csvWriter.writeRecords([{ ...details, query: currentQuery, source: 'Google Maps' }]);
+            totalSaved++;
+            notifyProgress({
+              status: 'running',
+              engine: 'Google Maps',
+              currentQuery,
+              currentQueryIdx: i + 1,
+              totalQueries: queries.length,
+              totalSaved,
+              percent: Math.min(100, Math.round(((i + 1) / queries.length) * 100)),
+              csvPath
+            });
+            notifyLog(`Lead captured: ${details.title} (${details.phone_1})`);
+          }
         }
         continue;
       }
@@ -368,21 +371,24 @@ async function runGmaps(config, control, notifyProgress, notifyLog) {
 
               const details = await extractActivePane(page);
               if (details.title && details.title !== 'Unknown') {
-                if (details.phone_1 === 'None') noPhoneCount++;
-                await csvWriter.writeRecords([{ ...details, query: q, source: 'Google Maps' }]);
-                totalSaved++;
-                notifyProgress({
-                  status: 'running',
-                  engine: 'gmaps',
-                  currentQuery: q,
-                  currentQueryIdx: i + 1,
-                  totalQueries: queries.length,
-                  totalSaved,
-                  latestLead: details,
-                  percent: Math.min(100, Math.round(((i + (seenUrls.size / (seenUrls.size + 10))) / queries.length) * 100)),
-                  csvPath
-                });
-                notifyLog(`Found lead: ${details.title}`);
+                const dedupeKey = `${details.title.toLowerCase()}::${details.phone_1}`;
+                if (!existingLeadKeys.has(dedupeKey)) {
+                  existingLeadKeys.add(dedupeKey);
+                  if (details.phone_1 === 'None') noPhoneCount++;
+                  await csvWriter.writeRecords([{ ...details, query: currentQuery, source: 'Google Maps' }]);
+                  totalSaved++;
+                  notifyProgress({
+                    status: 'running',
+                    engine: 'Google Maps',
+                    currentQuery,
+                    currentQueryIdx: i + 1,
+                    totalQueries: queries.length,
+                    totalSaved,
+                    percent: Math.min(100, Math.round(((i + (seenUrls.size / (seenUrls.size + 10))) / queries.length) * 100)),
+                    csvPath
+                  });
+                  notifyLog(`Lead captured: ${details.title}`);
+                }
               }
 
               await returnToFeed(page);
@@ -419,33 +425,36 @@ async function runGmaps(config, control, notifyProgress, notifyLog) {
         scrollRounds++;
       }
 
-      updateHistoryRecord(recordId, {
+      updateHistoryRecord(taskId, {
         currentQueryIdx: i + 1,
+        completedQueries: i + 1,
         totalSaved,
         noPhoneCount,
-        failedCount: failedQueries
+        failedQueriesCount
       });
     }
 
     clearActiveCheckpoint();
-    updateHistoryRecord(recordId, {
+    updateHistoryRecord(taskId, {
       status: 'completed',
       currentQueryIdx: queries.length,
+      completedQueries: queries.length,
       totalSaved,
       noPhoneCount,
-      failedCount: failedQueries
+      failedQueriesCount
     });
 
-    notifyLog(`Search completed. Total leads found: ${totalSaved}`);
+    notifyLog(`Search queue completed successfully. ${totalSaved} leads stored.`);
     return {
       status: 'completed',
-      engine: 'gmaps',
+      engine: 'Google Maps',
+      title: primaryTitle,
       totalSaved,
-      completedQueries: queries.length - failedQueries,
+      completedQueries: queries.length - failedQueriesCount,
       totalQueries: queries.length,
       csvPath,
       noPhoneCount,
-      failedQueries
+      failedQueriesCount
     };
   } finally {
     try {
