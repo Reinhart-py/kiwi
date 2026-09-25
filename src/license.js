@@ -10,12 +10,18 @@ function getHwid() {
   try {
     return machineIdSync({ original: true });
   } catch {
-    return 'generic-hwid-' + process.platform;
+    const os = require('os');
+    const crypto = require('crypto');
+    return crypto.createHash('md5').update(os.hostname() + os.platform() + 'Reinhart').digest('hex');
   }
 }
 
 function getKeyFilePath() {
   return path.join(getAppDataDir(), 'license.key');
+}
+
+function getCacheFilePath() {
+  return path.join(getAppDataDir(), 'license_session.json');
 }
 
 function getSavedKey() {
@@ -30,10 +36,29 @@ function getSavedKey() {
   return '';
 }
 
-function saveKey(key) {
-  const filePath = getKeyFilePath();
+function getCachedSession() {
+  const cachePath = getCacheFilePath();
+  if (fs.existsSync(cachePath)) {
+    try {
+      const raw = fs.readFileSync(cachePath, 'utf8');
+      const data = JSON.parse(raw);
+      if (data && data.passed && data.key) {
+        return data;
+      }
+    } catch {}
+  }
+  return null;
+}
+
+function saveCachedSession(data) {
   try {
-    fs.writeFileSync(filePath, key.trim(), 'utf8');
+    fs.writeFileSync(getCacheFilePath(), JSON.stringify(data, null, 2), 'utf8');
+  } catch {}
+}
+
+function saveKey(key) {
+  try {
+    fs.writeFileSync(getKeyFilePath(), key.trim(), 'utf8');
     return true;
   } catch {
     return false;
@@ -41,11 +66,13 @@ function saveKey(key) {
 }
 
 function removeKey() {
-  const filePath = getKeyFilePath();
-  if (fs.existsSync(filePath)) {
-    try {
-      fs.unlinkSync(filePath);
-    } catch {}
+  const keyPath = getKeyFilePath();
+  const cachePath = getCacheFilePath();
+  if (fs.existsSync(keyPath)) {
+    try { fs.unlinkSync(keyPath); } catch {}
+  }
+  if (fs.existsSync(cachePath)) {
+    try { fs.unlinkSync(cachePath); } catch {}
   }
 }
 
@@ -70,7 +97,8 @@ function formatExpiry(isoString) {
 }
 
 async function verifyKey(key) {
-  if (!key || !key.trim()) {
+  const cleanKey = (key || '').trim();
+  if (!cleanKey) {
     return { passed: false, msg: 'License key required.' };
   }
 
@@ -78,35 +106,64 @@ async function verifyKey(key) {
   try {
     const res = await axios.post(
       API_URL,
-      { key: key.trim(), hwid },
-      { timeout: 7000 }
+      { key: cleanKey, hwid },
+      { timeout: 4000 }
     );
 
     if (res.data && res.data.success) {
-      return {
+      const payload = {
         passed: true,
+        key: cleanKey,
         owner: res.data.owner || 'Subscriber',
         expires: formatExpiry(res.data.expiresAt),
-        rawExpires: res.data.expiresAt
+        rawExpires: res.data.expiresAt,
+        verifiedAt: Date.now()
       };
+      saveKey(cleanKey);
+      saveCachedSession(payload);
+      return payload;
     }
 
+    removeKey();
     return { passed: false, msg: res.data.message || 'Key rejected.' };
   } catch (err) {
     if (err.response && err.response.data && err.response.data.message) {
       const msg = err.response.data.message;
+      removeKey();
       if (msg === 'key_expired') return { passed: false, msg: 'License duration expired.' };
-      if (msg === 'hwid_mismatch') return { passed: false, msg: 'Key registered to another workstation.' };
+      if (msg === 'hwid_mismatch') return { passed: false, msg: 'Key registered to another device.' };
       if (msg === 'key_inactive') return { passed: false, msg: 'License deactivated.' };
       if (msg === 'key_not_found') return { passed: false, msg: 'Key not found.' };
       return { passed: false, msg: `Denied: ${msg}` };
     }
-    return { passed: false, msg: 'Connection to auth node failed.' };
+
+    const cached = getCachedSession();
+    if (cached && cached.key === cleanKey) {
+      return cached;
+    }
+
+    return { passed: false, msg: 'Cannot contact license server.' };
   }
+}
+
+async function checkSavedLicense() {
+  const savedKey = getSavedKey();
+  if (!savedKey) {
+    return { passed: false, msg: '' };
+  }
+
+  const cached = getCachedSession();
+  if (cached && cached.key === savedKey) {
+    verifyKey(savedKey).catch(() => {});
+    return cached;
+  }
+
+  return await verifyKey(savedKey);
 }
 
 module.exports = {
   verifyKey,
+  checkSavedLicense,
   getSavedKey,
   saveKey,
   removeKey
