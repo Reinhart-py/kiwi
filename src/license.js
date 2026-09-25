@@ -1,19 +1,55 @@
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
-const { machineIdSync } = require('node-machine-id');
+const os = require('os');
+const crypto = require('crypto');
 const { getAppDataDir } = require('./storage');
 
 const API_URL = 'https://jules-api.vercel.app/api/validate';
 
+function getDeviceIdFilePath() {
+  return path.join(getAppDataDir(), 'device.id');
+}
+
 function getHwid() {
-  try {
-    return machineIdSync({ original: true });
-  } catch {
-    const os = require('os');
-    const crypto = require('crypto');
-    return crypto.createHash('md5').update(os.hostname() + os.platform() + 'Reinhart').digest('hex');
+  const idPath = getDeviceIdFilePath();
+  if (fs.existsSync(idPath)) {
+    try {
+      const stored = fs.readFileSync(idPath, 'utf8').trim();
+      if (stored && stored.length >= 32) return stored;
+    } catch {}
   }
+
+  let mac = '';
+  try {
+    const interfaces = os.networkInterfaces();
+    for (const name of Object.keys(interfaces)) {
+      for (const net of interfaces[name]) {
+        if (!net.internal && net.mac && net.mac !== '00:00:00:00:00:00') {
+          mac = net.mac;
+          break;
+        }
+      }
+      if (mac) break;
+    }
+  } catch {}
+
+  const rawSeed = [
+    mac || 'fallback-mac',
+    os.hostname(),
+    os.platform(),
+    os.arch(),
+    os.cpus().length,
+    'KIRI-STATIC-DEVICE-SALT-2026'
+  ].join('|');
+
+  const generated = crypto.createHash('sha256').update(rawSeed).digest('hex');
+
+  try {
+    fs.writeFileSync(idPath, generated, 'utf8');
+  } catch {}
+
+  return generated;
 }
 
 function getKeyFilePath() {
