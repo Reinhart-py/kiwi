@@ -3,8 +3,7 @@
   "version": "4.0.0",
   "description": "Kiri B2B Lead Suite",
   "main": "main.js",
-  "author": "Reinhart <https://reinhart.pages.dev>",
-  "homepage": "https://reinhart.pages.dev",
+  "author": "Reinhart",
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder --win --publish never"
@@ -12,6 +11,7 @@
   "dependencies": {
     "axios": "^1.7.7",
     "csv-writer": "^1.6.0",
+    "node-machine-id": "^1.1.12",
     "open": "^8.4.2",
     "playwright-core": "^1.47.2",
     "xlsx": "^0.18.5"
@@ -23,7 +23,6 @@
   "build": {
     "appId": "com.reinhart.kiri",
     "productName": "Kiri",
-    "copyright": "Copyright © 2026 Reinhart",
     "publish": null,
     "directories": {
       "output": "release"
@@ -35,8 +34,7 @@
           "arch": ["x64"]
         }
       ],
-      "icon": "images/logo.png",
-      "requestedExecutionLevel": "asInvoker"
+      "icon": "images/logo.png"
     },
     "nsis": {
       "oneClick": true,
