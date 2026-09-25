@@ -1,8 +1,15 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { verifyKey, checkSavedLicense, saveKey, removeKey } = require('./src/license');
-const { getHistory, getActiveCheckpoint, clearActiveCheckpoint } = require('./src/storage');
+const { verifyKey, checkSavedLicense, removeKey } = require('./src/license');
+const {
+  getHistory,
+  getActiveCheckpoint,
+  clearActiveCheckpoint,
+  getExportsDir,
+  readCsvPreview,
+  parseBatchFile
+} = require('./src/storage');
 const { runGmaps } = require('./src/scraper-gmaps');
 const { runTwoGis } = require('./src/scraper-2gis');
 
@@ -19,18 +26,23 @@ function resolveAppIcon() {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
-    minWidth: 1040,
-    minHeight: 700,
-    backgroundColor: '#061c12',
+    width: 1240,
+    height: 840,
+    minWidth: 980,
+    minHeight: 660,
+    backgroundColor: '#09090b',
     autoHideMenuBar: true,
+    show: false,
     icon: resolveAppIcon(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false
     }
+  });
+
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
   });
 
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
@@ -74,7 +86,11 @@ ipcMain.handle('storage:dismiss-checkpoint', async () => {
   return true;
 });
 
-ipcMain.handle('dialog:open-file', async () => {
+ipcMain.handle('results:preview', async (event, filePath) => {
+  return readCsvPreview(filePath, 20);
+});
+
+ipcMain.handle('dialog:pick-batch-file', async () => {
   const res = await dialog.showOpenDialog(mainWindow, {
     properties: ['openFile'],
     filters: [
@@ -82,38 +98,81 @@ ipcMain.handle('dialog:open-file', async () => {
       { name: 'All Files', extensions: ['*'] }
     ]
   });
-  if (!res.canceled && res.filePaths.length > 0) {
-    return res.filePaths[0];
+
+  if (res.canceled || !res.filePaths || res.filePaths.length === 0) {
+    return null;
   }
-  return null;
+
+  const selectedPath = res.filePaths[0];
+  const queries = parseBatchFile(selectedPath);
+  return {
+    path: selectedPath,
+    name: path.basename(selectedPath),
+    queries
+  };
 });
 
 ipcMain.handle('shell:open-link', async (event, url) => {
-  await shell.openExternal(url);
+  if (typeof url === 'string' && (url.startsWith('https://') || url.startsWith('http://') || url.startsWith('mailto:'))) {
+    await shell.openExternal(url);
+  }
+});
+
+ipcMain.handle('shell:open-path', async (event, targetPath) => {
+  if (!targetPath) return false;
+  if (fs.existsSync(targetPath)) {
+    await shell.openPath(targetPath);
+    return true;
+  }
+  return false;
+});
+
+ipcMain.handle('shell:show-in-folder', async (event, targetPath) => {
+  if (!targetPath) {
+    const exportsDir = getExportsDir();
+    await shell.openPath(exportsDir);
+    return true;
+  }
+  if (fs.existsSync(targetPath)) {
+    shell.showItemInFolder(targetPath);
+    return true;
+  }
+  await shell.openPath(getExportsDir());
+  return true;
 });
 
 ipcMain.handle('scraper:start-gmaps', async (event, config) => {
   if (activeTask && activeTask.isRunning) {
-    return { success: false, message: 'A task is already running.' };
+    return { success: false, message: 'A search is already in progress.' };
   }
 
   activeTask = { isRunning: true, cancelled: false };
 
-  const logger = (msg) => {
+  const notifyProgress = (data) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('scraper:log', msg);
+      mainWindow.webContents.send('scraper:progress', data);
     }
   };
 
-  runGmaps(config, activeTask, logger)
+  const notifyLog = (text) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('scraper:log', text);
+    }
+  };
+
+  runGmaps(config, activeTask, notifyProgress, notifyLog)
+    .then((summary) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('scraper:finished', summary);
+      }
+    })
     .catch((err) => {
-      logger(`Error: ${err.message}`);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('scraper:error', err.message || 'Scraping failed.');
+      }
     })
     .finally(() => {
       if (activeTask) activeTask.isRunning = false;
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('scraper:done');
-      }
     });
 
   return { success: true };
@@ -121,26 +180,36 @@ ipcMain.handle('scraper:start-gmaps', async (event, config) => {
 
 ipcMain.handle('scraper:start-twogis', async (event, config) => {
   if (activeTask && activeTask.isRunning) {
-    return { success: false, message: 'A task is already running.' };
+    return { success: false, message: 'A search is already in progress.' };
   }
 
   activeTask = { isRunning: true, cancelled: false };
 
-  const logger = (msg) => {
+  const notifyProgress = (data) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('scraper:log', msg);
+      mainWindow.webContents.send('scraper:progress', data);
     }
   };
 
-  runTwoGis(config, activeTask, logger)
+  const notifyLog = (text) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('scraper:log', text);
+    }
+  };
+
+  runTwoGis(config, activeTask, notifyProgress, notifyLog)
+    .then((summary) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('scraper:finished', summary);
+      }
+    })
     .catch((err) => {
-      logger(`Error: ${err.message}`);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('scraper:error', err.message || 'Scraping failed.');
+      }
     })
     .finally(() => {
       if (activeTask) activeTask.isRunning = false;
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('scraper:done');
-      }
     });
 
   return { success: true };
