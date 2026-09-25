@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { verifyKey, getSavedKey, saveKey, removeKey } = require('./src/license');
+const { verifyKey, checkSavedLicense, saveKey, removeKey } = require('./src/license');
 const { getHistory, getActiveCheckpoint, clearActiveCheckpoint } = require('./src/storage');
 const { runGmaps } = require('./src/scraper-gmaps');
 const { runTwoGis } = require('./src/scraper-2gis');
@@ -49,17 +49,11 @@ app.on('window-all-closed', () => {
 });
 
 ipcMain.handle('license:check-saved', async () => {
-  const key = getSavedKey();
-  if (!key) return { passed: false };
-  return await verifyKey(key);
+  return await checkSavedLicense();
 });
 
 ipcMain.handle('license:verify', async (event, key) => {
-  const res = await verifyKey(key);
-  if (res.passed) {
-    saveKey(key);
-  }
-  return res;
+  return await verifyKey(key);
 });
 
 ipcMain.handle('license:logout', async () => {
