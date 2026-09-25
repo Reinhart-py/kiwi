@@ -24,13 +24,13 @@ jobs:
       - name: Install Project Dependencies
         run: npm install
 
-      - name: Package Windows Executable
+      - name: Package Windows Installer
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run dist -- --publish never
+        run: npm run dist
 
-      - name: Upload Installer and Portable Binary
+      - name: Upload Installer Setup
         uses: actions/upload-artifact@v4
         with:
-          name: Kiri-Windows-Release
-          path: release/*.exe
+          name: Kiri-Windows-Installer
+          path: release/Kiri Setup *.exe
