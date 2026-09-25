@@ -32,17 +32,17 @@
         {
           "target": "nsis",
           "arch": ["x64"]
-        },
-        {
-          "target": "portable",
-          "arch": ["x64"]
         }
       ],
-      "icon": "images/icon.ico"
+      "icon": "images/logo.png"
     },
     "nsis": {
       "oneClick": true,
       "perMachine": false,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "Kiri",
+      "runAfterFinish": true,
       "deleteAppDataOnUninstall": false
     }
   }
