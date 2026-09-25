@@ -4,11 +4,13 @@ const fs = require('fs');
 const { verifyKey, checkSavedLicense, removeKey } = require('./src/license');
 const {
   getHistory,
+  deleteHistoryItem,
   getActiveCheckpoint,
   clearActiveCheckpoint,
   getExportsDir,
   readCsvPreview,
-  parseBatchFile
+  parseBatchFile,
+  parseRawKeywords
 } = require('./src/storage');
 const { runGmaps } = require('./src/scraper-gmaps');
 const { runTwoGis } = require('./src/scraper-2gis');
@@ -26,10 +28,10 @@ function resolveAppIcon() {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1240,
-    height: 840,
-    minWidth: 980,
-    minHeight: 660,
+    width: 1280,
+    height: 860,
+    minWidth: 1060,
+    minHeight: 700,
     backgroundColor: '#09090b',
     autoHideMenuBar: true,
     show: false,
@@ -37,7 +39,8 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      sandbox: false
     }
   });
 
@@ -77,6 +80,10 @@ ipcMain.handle('storage:get-history', async () => {
   return getHistory();
 });
 
+ipcMain.handle('storage:delete-history', async (event, id) => {
+  return deleteHistoryItem(id);
+});
+
 ipcMain.handle('storage:get-active-checkpoint', async () => {
   return getActiveCheckpoint();
 });
@@ -86,11 +93,32 @@ ipcMain.handle('storage:dismiss-checkpoint', async () => {
   return true;
 });
 
-ipcMain.handle('results:preview', async (event, filePath) => {
-  return readCsvPreview(filePath, 20);
+ipcMain.handle('storage:preview-csv', async (event, filePath) => {
+  return readCsvPreview(filePath, 25);
 });
 
-ipcMain.handle('dialog:pick-batch-file', async () => {
+ipcMain.handle('file:parse-path', async (event, filePath) => {
+  if (!filePath || !fs.existsSync(filePath)) {
+    return { success: false, message: 'File not found.' };
+  }
+  const result = parseBatchFile(filePath);
+  return {
+    success: true,
+    filename: path.basename(filePath),
+    path: filePath,
+    ...result
+  };
+});
+
+ipcMain.handle('file:parse-text', async (event, rawText) => {
+  const result = parseRawKeywords(rawText);
+  return {
+    success: true,
+    ...result
+  };
+});
+
+ipcMain.handle('dialog:pick-file', async () => {
   const res = await dialog.showOpenDialog(mainWindow, {
     properties: ['openFile'],
     filters: [
@@ -104,21 +132,21 @@ ipcMain.handle('dialog:pick-batch-file', async () => {
   }
 
   const selectedPath = res.filePaths[0];
-  const queries = parseBatchFile(selectedPath);
+  const parsed = parseBatchFile(selectedPath);
   return {
     path: selectedPath,
-    name: path.basename(selectedPath),
-    queries
+    filename: path.basename(selectedPath),
+    ...parsed
   };
 });
 
 ipcMain.handle('shell:open-link', async (event, url) => {
-  if (typeof url === 'string' && (url.startsWith('https://') || url.startsWith('http://') || url.startsWith('mailto:'))) {
+  if (typeof url === 'string' && (url.startsWith('https://') || url.startsWith('http://'))) {
     await shell.openExternal(url);
   }
 });
 
-ipcMain.handle('shell:open-path', async (event, targetPath) => {
+ipcMain.handle('shell:open-file', async (event, targetPath) => {
   if (!targetPath) return false;
   if (fs.existsSync(targetPath)) {
     await shell.openPath(targetPath);
@@ -128,12 +156,7 @@ ipcMain.handle('shell:open-path', async (event, targetPath) => {
 });
 
 ipcMain.handle('shell:show-in-folder', async (event, targetPath) => {
-  if (!targetPath) {
-    const exportsDir = getExportsDir();
-    await shell.openPath(exportsDir);
-    return true;
-  }
-  if (fs.existsSync(targetPath)) {
+  if (targetPath && fs.existsSync(targetPath)) {
     shell.showItemInFolder(targetPath);
     return true;
   }
@@ -143,7 +166,7 @@ ipcMain.handle('shell:show-in-folder', async (event, targetPath) => {
 
 ipcMain.handle('scraper:start-gmaps', async (event, config) => {
   if (activeTask && activeTask.isRunning) {
-    return { success: false, message: 'A search is already in progress.' };
+    return { success: false, message: 'Another search is currently running.' };
   }
 
   activeTask = { isRunning: true, cancelled: false };
@@ -168,7 +191,9 @@ ipcMain.handle('scraper:start-gmaps', async (event, config) => {
     })
     .catch((err) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('scraper:error', err.message || 'Scraping failed.');
+        mainWindow.webContents.send('scraper:failed', {
+          message: err.message || 'Scraping operation failed.'
+        });
       }
     })
     .finally(() => {
@@ -180,7 +205,7 @@ ipcMain.handle('scraper:start-gmaps', async (event, config) => {
 
 ipcMain.handle('scraper:start-twogis', async (event, config) => {
   if (activeTask && activeTask.isRunning) {
-    return { success: false, message: 'A search is already in progress.' };
+    return { success: false, message: 'Another search is currently running.' };
   }
 
   activeTask = { isRunning: true, cancelled: false };
@@ -205,7 +230,9 @@ ipcMain.handle('scraper:start-twogis', async (event, config) => {
     })
     .catch((err) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('scraper:error', err.message || 'Scraping failed.');
+        mainWindow.webContents.send('scraper:failed', {
+          message: err.message || 'Scraping operation failed.'
+        });
       }
     })
     .finally(() => {
