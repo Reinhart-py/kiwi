@@ -20,7 +20,6 @@ tailwind.config = {
           dark: '#0C1311',
           sidebar: '#0C1412',
           surface: '#F4F7F5',
-          border: 'rgba(255, 255, 255, 0.08)',
         }
       }
     }
@@ -82,7 +81,7 @@ body {
   <h2 class="text-white text-lg font-bold tracking-tight mb-2">Kiri</h2>
   <div class="flex items-center gap-2 text-xs text-emerald-400 font-medium bg-black/40 px-3.5 py-1.5 rounded-full border border-emerald-500/20">
     <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-    <span id="loading-msg">Verifying license...</span>
+    <span id="loading-msg">Loading workspace...</span>
   </div>
 </div>
 
@@ -457,10 +456,10 @@ async function submitAuth() {
   btn.disabled = false;
   btn.innerText = 'Activate';
 
-  if (res.passed) {
+  if (res && res.passed) {
     showDashboard(res);
   } else {
-    errorBox.innerText = res.msg || 'Invalid key.';
+    errorBox.innerText = (res && res.msg) ? res.msg : 'Invalid key.';
   }
 }
 
@@ -622,3 +621,22 @@ async function stopTask() {
   appendLog('Stopping task...');
   await window.api.stopScraper();
 }
+
+async function pickFile() {
+  const filePath = await window.api.openFile();
+  if (filePath) {
+    document.getElementById('gmaps-input').value = filePath;
+  }
+}
+
+async function logout() {
+  await window.api.logoutLicense();
+  showAuthScreen();
+  document.getElementById('auth-key-input').value = '';
+}
+
+window.api.onLog((msg) => {
+  appendLog(msg);
+});
+
+window.a
