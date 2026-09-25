@@ -1,39 +1,24 @@
 const { chromium } = require('playwright-core');
 const fs = require('fs');
 const path = require('path');
-const xlsx = require('xlsx');
 const createCsvWriter = require('csv-writer').createObjectCsvWriter;
-const { getExportsDir, updateProgress, saveHistoryItem, clearActiveCheckpoint } = require('./storage');
+const {
+  getExportsDir,
+  saveHistoryItem,
+  updateHistoryRecord,
+  saveActiveCheckpoint,
+  clearActiveCheckpoint,
+  parseBatchFile
+} = require('./storage');
 
-function loadTargetList(targetInput) {
+function resolveQueryList(targetInput) {
   const clean = targetInput.replace(/["']/g, '').trim();
   if (fs.existsSync(clean) && fs.statSync(clean).isFile()) {
-    const ext = path.extname(clean).toLowerCase();
-    if (ext === '.csv') {
-      const content = fs.readFileSync(clean, 'utf8');
-      return content
-        .split(/\r?\n/)
-        .map((l) => l.trim())
-        .filter(Boolean);
-    }
-    if (ext === '.xlsx' || ext === '.xls') {
-      const workbook = xlsx.readFile(clean);
-      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-      const json = xlsx.utils.sheet_to_json(firstSheet, { header: 1 });
-      const items = [];
-      for (const row of json) {
-        if (Array.isArray(row)) {
-          const combined = row.map((cell) => String(cell || '').trim()).filter(Boolean).join(' ');
-          if (combined) items.push(combined);
-        }
-      }
-      return items.length ? items : [clean];
-    }
-    const content = fs.readFileSync(clean, 'utf8');
-    return content
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter(Boolean);
+    const list = parseBatchFile(clean);
+    return list.length ? list : [clean];
+  }
+  if (clean.includes('\n')) {
+    return clean.split('\n').map((l) => l.trim()).filter(Boolean);
   }
   return [clean];
 }
@@ -58,16 +43,16 @@ async function getBrowser() {
 }
 
 function rankPhones(phones) {
-  function score(p) {
-    const clean = p.replace(/[^\d+]/g, '');
-    if (clean.startsWith('+9715') || clean.startsWith('009715') || clean.startsWith('05')) return 0;
-    if (/^(\+91|91|0)?[6-9]\d{9}$/.test(clean)) return 1;
-    if (clean.startsWith('+447') || clean.startsWith('07')) return 2;
-    if (/800|\+971800|1800/.test(clean)) return 10;
+  const cleanList = Array.from(new Set(phones.map((p) => p.trim()).filter(Boolean)));
+  const score = (p) => {
+    const num = p.replace(/[^\d+]/g, '');
+    if (num.startsWith('+9715') || num.startsWith('009715') || num.startsWith('05')) return 0;
+    if (/^(\+91|91|0)?[6-9]\d{9}$/.test(num)) return 1;
+    if (num.startsWith('+447') || num.startsWith('07')) return 2;
+    if (/800|\+971800|1800/.test(num)) return 10;
     return 5;
-  }
-  const unique = Array.from(new Set(phones.map((p) => p.trim()).filter(Boolean)));
-  return unique.sort((a, b) => score(a) - score(b));
+  };
+  return cleanList.sort((a, b) => score(a) - score(b));
 }
 
 async function extractActivePane(page) {
@@ -76,6 +61,7 @@ async function extractActivePane(page) {
     phone_1: 'None',
     phone_2: 'None',
     website: 'None',
+    category: 'Business',
     address: 'None',
     rating: 'None',
     reviews: 'None'
@@ -85,6 +71,13 @@ async function extractActivePane(page) {
     const titleEl = await page.$('h1.DUwDvf');
     if (titleEl) {
       data.title = (await titleEl.innerText()).trim();
+    }
+  } catch {}
+
+  try {
+    const catEl = await page.$('button.DkEaL, span.fontBodyMedium button');
+    if (catEl) {
+      data.category = (await catEl.innerText()).trim();
     }
   } catch {}
 
@@ -136,7 +129,7 @@ async function extractActivePane(page) {
 async function returnToFeed(page) {
   try {
     const backBtn = page.locator('div[role="main"] button[aria-label="Back to results"], button[jsaction*="pane.back"], div[role="main"] button[aria-label="Back"]').first();
-    if (await backBtn.isVisible({ timeout: 600 }).catch(() => false)) {
+    if (await backBtn.isVisible({ timeout: 500 }).catch(() => false)) {
       await backBtn.click().catch(() => {});
     } else {
       await page.keyboard.press('Escape').catch(() => {});
@@ -145,8 +138,8 @@ async function returnToFeed(page) {
     await page.keyboard.press('Escape').catch(() => {});
   }
 
-  await page.waitForSelector('div[role="feed"]', { timeout: 3000 }).catch(() => {});
-  await page.waitForTimeout(250);
+  await page.waitForSelector('div[role="feed"]', { timeout: 2500 }).catch(() => {});
+  await page.waitForTimeout(200);
 }
 
 async function executeSearch(page, query) {
@@ -157,20 +150,20 @@ async function executeSearch(page, query) {
   await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 35000 });
 
   try {
-    const acceptBtn = await page.$('button[aria-label*="Accept all"], form button');
-    if (acceptBtn) await acceptBtn.click();
+    const consent = await page.$('button[aria-label*="Accept all"], form button');
+    if (consent) await consent.click();
   } catch {}
 
-  await page.waitForTimeout(1800);
+  await page.waitForTimeout(1600);
 
-  const isBlankMap = await page.evaluate(() => {
+  const isBlank = await page.evaluate(() => {
     const input = document.querySelector('#searchboxinput');
-    const hasNoQuery = !input || !input.value.trim();
+    const empty = !input || !input.value.trim();
     const isRoot = window.location.href.includes('/@') && !window.location.href.includes('/search/') && !window.location.href.includes('/place/');
-    return hasNoQuery && isRoot;
+    return empty && isRoot;
   });
 
-  if (isBlankMap) {
+  if (isBlank) {
     const inputLocator = page.locator('#searchboxinput');
     if (await inputLocator.isVisible({ timeout: 2000 }).catch(() => false)) {
       await inputLocator.fill(query);
@@ -180,84 +173,155 @@ async function executeSearch(page, query) {
   }
 }
 
-async function runGmaps(config, control, log) {
-  const { target, cap = 0, initialSaved = 0 } = config;
-  const queries = loadTargetList(target);
-
+async function runGmaps(config, control, notifyProgress, notifyLog) {
+  const { target, cap = 0, initialSaved = 0, taskId } = config;
+  const queries = resolveQueryList(target);
   let startIdx = Number(config.startIdx) || 0;
+
   if (startIdx >= queries.length) {
-    log(`All ${queries.length} queries completed. Resetting to query 1.`);
     startIdx = 0;
-    clearActiveCheckpoint();
   }
 
-  const baseFileName = path.basename(target).replace(/[^a-zA-Z0-9]/g, '_').substring(0, 24);
-  const csvPath = path.join(getExportsDir(), `gmaps_${baseFileName}.csv`);
+  const fileSeed = (queries[0] || 'search').replace(/[^a-zA-Z0-9]/g, '_').substring(0, 24);
+  const csvFileName = `GoogleMaps_${fileSeed}_${queries.length > 1 ? `batch${queries.length}` : 'single'}.csv`;
+  const csvPath = config.existingCsvPath && fs.existsSync(config.existingCsvPath)
+    ? config.existingCsvPath
+    : path.join(getExportsDir(), csvFileName);
+
   const fileExists = fs.existsSync(csvPath);
 
   const csvWriter = createCsvWriter({
     path: csvPath,
     header: [
-      { id: 'query', title: 'Query' },
       { id: 'title', title: 'Business Name' },
-      { id: 'phone_1', title: 'Primary Phone' },
+      { id: 'phone_1', title: 'Phone' },
       { id: 'phone_2', title: 'Secondary Phone' },
       { id: 'website', title: 'Website' },
+      { id: 'category', title: 'Category' },
       { id: 'address', title: 'Address' },
+      { id: 'query', title: 'Search Keyword' },
       { id: 'rating', title: 'Rating' },
-      { id: 'reviews', title: 'Reviews' }
+      { id: 'reviews', title: 'Reviews' },
+      { id: 'source', title: 'Source' }
     ],
     append: fileExists
   });
 
+  const recordId = taskId || `gmaps_${Date.now()}`;
   saveHistoryItem({
+    id: recordId,
     engine: 'gmaps',
     target,
-    lastStep: startIdx,
+    label: queries.length > 1 ? `${queries[0]} (+${queries.length - 1} more)` : queries[0],
+    totalQueries: queries.length,
+    currentQueryIdx: startIdx,
     totalSaved: initialSaved,
-    date: new Date().toISOString()
+    status: 'running',
+    csvPath,
+    config: { target, cap, startIdx, initialSaved, csvPath }
   });
 
-  log(`Target queue: ${queries.length} queries`);
-  log(`Starting at query ${startIdx + 1}`);
+  notifyLog(`Starting Google Maps search queue (${queries.length} searches)...`);
+  notifyProgress({
+    status: 'running',
+    engine: 'gmaps',
+    currentQuery: queries[startIdx],
+    currentQueryIdx: startIdx,
+    totalQueries: queries.length,
+    totalSaved: initialSaved,
+    percent: Math.round((startIdx / queries.length) * 100),
+    csvPath
+  });
 
   const browser = await getBrowser();
   const context = await browser.newContext({ locale: 'en-US' });
   const page = await context.newPage();
 
   let totalSaved = initialSaved;
+  let noPhoneCount = 0;
+  let failedQueries = 0;
 
   try {
     for (let i = startIdx; i < queries.length; i++) {
       if (control.cancelled) {
-        log('Stopped by user.');
-        break;
+        notifyLog('Search paused by user.');
+        updateHistoryRecord(recordId, {
+          status: 'paused',
+          currentQueryIdx: i,
+          totalSaved,
+          noPhoneCount,
+          failedCount: failedQueries
+        });
+        saveActiveCheckpoint({
+          id: recordId,
+          engine: 'gmaps',
+          target,
+          label: queries[i],
+          currentQueryIdx: i,
+          totalQueries: queries.length,
+          totalSaved,
+          csvPath,
+          cap
+        });
+        return {
+          status: 'paused',
+          engine: 'gmaps',
+          totalSaved,
+          completedQueries: i,
+          totalQueries: queries.length,
+          csvPath,
+          noPhoneCount,
+          failedQueries
+        };
       }
 
       if (cap > 0 && totalSaved >= cap) {
-        log(`Target limit of ${cap} leads reached.`);
+        notifyLog(`Reached lead limit of ${cap}.`);
         break;
       }
 
       const q = queries[i];
-      log(`[${i + 1}/${queries.length}] ${q}`);
+      const progressPercent = Math.min(100, Math.round(((i) / queries.length) * 100));
+
+      notifyProgress({
+        status: 'running',
+        engine: 'gmaps',
+        currentQuery: q,
+        currentQueryIdx: i + 1,
+        totalQueries: queries.length,
+        totalSaved,
+        percent: progressPercent,
+        csvPath
+      });
+      notifyLog(`Searching ${i + 1} of ${queries.length}: ${q}`);
 
       try {
         await executeSearch(page, q);
-      } catch {
-        log(`Failed loading: ${q}. Advancing.`);
-        updateProgress('gmaps', target, i + 1, totalSaved);
+      } catch (navErr) {
+        failedQueries++;
+        notifyLog(`Could not load search: ${q}. Skipping.`);
         continue;
       }
 
       if (page.url().includes('/maps/place/')) {
         const details = await extractActivePane(page);
         if (details.title && details.title !== 'Unknown') {
-          await csvWriter.writeRecords([{ query: q, ...details }]);
+          if (details.phone_1 === 'None') noPhoneCount++;
+          await csvWriter.writeRecords([{ ...details, query: q, source: 'Google Maps' }]);
           totalSaved++;
-          log(`Saved #${totalSaved}: ${details.title} | ${details.phone_1}`);
+          notifyProgress({
+            status: 'running',
+            engine: 'gmaps',
+            currentQuery: q,
+            currentQueryIdx: i + 1,
+            totalQueries: queries.length,
+            totalSaved,
+            latestLead: details,
+            percent: Math.min(100, Math.round(((i + 1) / queries.length) * 100)),
+            csvPath
+          });
+          notifyLog(`Found lead: ${details.title}`);
         }
-        updateProgress('gmaps', target, i + 1, totalSaved);
         continue;
       }
 
@@ -265,7 +329,7 @@ async function runGmaps(config, control, log) {
       let scrollRounds = 0;
       let idleScrolls = 0;
 
-      while (scrollRounds < 35) {
+      while (scrollRounds < 40) {
         if (control.cancelled) break;
         if (cap > 0 && totalSaved >= cap) break;
 
@@ -297,16 +361,28 @@ async function runGmaps(config, control, log) {
 
             try {
               const card = page.locator(`div[role="feed"] a[href="${href}"]`).first();
-              await card.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
-              await card.click({ timeout: 3000 }).catch(() => {});
+              await card.scrollIntoViewIfNeeded({ timeout: 1500 }).catch(() => {});
+              await card.click({ timeout: 2500 }).catch(() => {});
 
-              await page.waitForSelector('h1.DUwDvf, button[data-item-id="address"]', { timeout: 5000 }).catch(() => {});
+              await page.waitForSelector('h1.DUwDvf, button[data-item-id="address"]', { timeout: 4500 }).catch(() => {});
 
               const details = await extractActivePane(page);
               if (details.title && details.title !== 'Unknown') {
-                await csvWriter.writeRecords([{ query: q, ...details }]);
+                if (details.phone_1 === 'None') noPhoneCount++;
+                await csvWriter.writeRecords([{ ...details, query: q, source: 'Google Maps' }]);
                 totalSaved++;
-                log(`Saved #${totalSaved}: ${details.title.substring(0, 24)} | ${details.phone_1}`);
+                notifyProgress({
+                  status: 'running',
+                  engine: 'gmaps',
+                  currentQuery: q,
+                  currentQueryIdx: i + 1,
+                  totalQueries: queries.length,
+                  totalSaved,
+                  latestLead: details,
+                  percent: Math.min(100, Math.round(((i + (seenUrls.size / (seenUrls.size + 10))) / queries.length) * 100)),
+                  csvPath
+                });
+                notifyLog(`Found lead: ${details.title}`);
               }
 
               await returnToFeed(page);
@@ -335,7 +411,7 @@ async function runGmaps(config, control, log) {
           } else {
             await page.evaluate(() => window.scrollBy(0, 1100));
           }
-          await page.waitForTimeout(1100);
+          await page.waitForTimeout(900);
         } catch {
           break;
         }
@@ -343,13 +419,38 @@ async function runGmaps(config, control, log) {
         scrollRounds++;
       }
 
-      updateProgress('gmaps', target, i + 1, totalSaved);
+      updateHistoryRecord(recordId, {
+        currentQueryIdx: i + 1,
+        totalSaved,
+        noPhoneCount,
+        failedCount: failedQueries
+      });
     }
+
+    clearActiveCheckpoint();
+    updateHistoryRecord(recordId, {
+      status: 'completed',
+      currentQueryIdx: queries.length,
+      totalSaved,
+      noPhoneCount,
+      failedCount: failedQueries
+    });
+
+    notifyLog(`Search completed. Total leads found: ${totalSaved}`);
+    return {
+      status: 'completed',
+      engine: 'gmaps',
+      totalSaved,
+      completedQueries: queries.length - failedQueries,
+      totalQueries: queries.length,
+      csvPath,
+      noPhoneCount,
+      failedQueries
+    };
   } finally {
     try {
       await browser.close();
     } catch {}
-    log('Finished.');
   }
 }
 
