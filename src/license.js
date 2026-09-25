@@ -1,55 +1,17 @@
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
-const crypto = require('crypto');
+const { machineIdSync } = require('node-machine-id');
 const { getAppDataDir } = require('./storage');
 
 const API_URL = 'https://jules-api.vercel.app/api/validate';
 
-function getDeviceIdFilePath() {
-  return path.join(getAppDataDir(), 'device.id');
-}
-
 function getHwid() {
-  const idPath = getDeviceIdFilePath();
-  if (fs.existsSync(idPath)) {
-    try {
-      const stored = fs.readFileSync(idPath, 'utf8').trim();
-      if (stored && stored.length >= 32) return stored;
-    } catch {}
+  try {
+    return machineIdSync({ original: true });
+  } catch {
+    return 'generic-hwid-' + process.platform;
   }
-
-  let mac = '';
-  try {
-    const interfaces = os.networkInterfaces();
-    for (const name of Object.keys(interfaces)) {
-      for (const net of interfaces[name]) {
-        if (!net.internal && net.mac && net.mac !== '00:00:00:00:00:00') {
-          mac = net.mac;
-          break;
-        }
-      }
-      if (mac) break;
-    }
-  } catch {}
-
-  const rawSeed = [
-    mac || 'fallback-mac',
-    os.hostname(),
-    os.platform(),
-    os.arch(),
-    os.cpus().length,
-    'KIRI-STATIC-DEVICE-SALT-2026'
-  ].join('|');
-
-  const generated = crypto.createHash('sha256').update(rawSeed).digest('hex');
-
-  try {
-    fs.writeFileSync(idPath, generated, 'utf8');
-  } catch {}
-
-  return generated;
 }
 
 function getKeyFilePath() {
@@ -113,7 +75,7 @@ function removeKey() {
 }
 
 function formatExpiry(isoString) {
-  if (!isoString) return 'Permanent / Lifetime';
+  if (!isoString) return 'Lifetime';
   try {
     const exp = new Date(isoString);
     const now = new Date();
@@ -121,12 +83,12 @@ function formatExpiry(isoString) {
     if (diffMs <= 0) return 'Expired';
     const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
     if (days > 3650) {
-      return 'Permanent / Lifetime';
+      return 'Lifetime';
     }
     const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
     const dateStr = exp.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-    if (days > 0) return `${dateStr} (${days} days remaining)`;
-    return `${dateStr} (${hours} hours remaining)`;
+    if (days > 0) return `${dateStr} (${days} days left)`;
+    return `${dateStr} (${hours} hours left)`;
   } catch {
     return String(isoString).substring(0, 10);
   }
@@ -135,7 +97,7 @@ function formatExpiry(isoString) {
 async function verifyKey(key) {
   const cleanKey = (key || '').trim();
   if (!cleanKey) {
-    return { passed: false, msg: 'License key required.' };
+    return { passed: false, msg: 'Please enter a key.' };
   }
 
   const hwid = getHwid();
@@ -143,14 +105,14 @@ async function verifyKey(key) {
     const res = await axios.post(
       API_URL,
       { key: cleanKey, hwid },
-      { timeout: 4000 }
+      { timeout: 5000 }
     );
 
     if (res.data && res.data.success) {
       const payload = {
         passed: true,
         key: cleanKey,
-        owner: res.data.owner || 'Subscriber',
+        owner: res.data.owner || 'User',
         expires: formatExpiry(res.data.expiresAt),
         rawExpires: res.data.expiresAt,
         verifiedAt: Date.now()
@@ -166,11 +128,11 @@ async function verifyKey(key) {
     if (err.response && err.response.data && err.response.data.message) {
       const msg = err.response.data.message;
       removeKey();
-      if (msg === 'key_expired') return { passed: false, msg: 'License duration expired.' };
-      if (msg === 'hwid_mismatch') return { passed: false, msg: 'Key registered to another device.' };
-      if (msg === 'key_inactive') return { passed: false, msg: 'License deactivated.' };
+      if (msg === 'key_expired') return { passed: false, msg: 'This key has expired.' };
+      if (msg === 'hwid_mismatch') return { passed: false, msg: 'Key is registered to another computer.' };
+      if (msg === 'key_inactive') return { passed: false, msg: 'Key is deactivated.' };
       if (msg === 'key_not_found') return { passed: false, msg: 'Key not found.' };
-      return { passed: false, msg: `Denied: ${msg}` };
+      return { passed: false, msg: msg };
     }
 
     const cached = getCachedSession();
@@ -178,7 +140,7 @@ async function verifyKey(key) {
       return cached;
     }
 
-    return { passed: false, msg: 'Cannot contact license server.' };
+    return { passed: false, msg: 'Could not connect to server.' };
   }
 }
 
